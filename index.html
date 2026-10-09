@@ -97,12 +97,123 @@ function addProduct(){
  save(); render();
 }
 
-function startScan(targetId){
- let inp=document.getElementById(targetId);
- if(!inp){inp=document.getElementById('searchInput');}
- if(inp){inp.focus(); inp.value=''; inp.placeholder='جاهز للمسح - وجه الجهاز...';}
- let t=document.getElementById('toast'); if(t){t.innerText='📷 جاهز للمسح - وجه جهاز الباركود'; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'),3000)}
+
+let html5QrCode=null;
+function openCameraScan(targetId){
+ let wrap=document.getElementById('cameraScanWrap');
+ if(!wrap){
+  let div=document.createElement('div');
+  div.id='cameraScanWrap';
+  div.className='fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4';
+  div.innerHTML=`
+   <div class="bg-white rounded-3xl p-5 w-full max-w-md text-center">
+    <div class="font-black text-lg mb-2">📷 مسح بالكاميرا</div>
+    <div id="reader" class="w-full rounded-2xl overflow-hidden border-2 border-red-200"></div>
+    <div class="text-xs text-gray-500 mt-2">وجه الكاميرا للباركود</div>
+    <div class="flex gap-2 mt-4">
+     <button onclick="closeCameraScan()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">إغلاق</button>
+     <button onclick="switchCamera()" class="flex-1 bg-black text-white py-3 rounded-xl font-bold">تبديل الكاميرا</button>
+    </div>
+   </div>
+  `;
+  document.body.appendChild(div);
+  wrap=div;
+ } else {
+  wrap.classList.remove('hidden');
+ }
+ 
+ // Start scanner
+ setTimeout(()=>{
+  try{
+   if(html5QrCode){ try{html5QrCode.stop()}catch(e){} }
+   html5QrCode=new Html5Qrcode("reader");
+   let target=targetId||window._lastScanTarget||'searchInput';
+   window._lastScanTarget=target;
+   html5QrCode.start(
+    {facingMode:"environment"},
+    {fps:10, qrbox:{width:250,height:250}},
+    (decodedText)=>{
+     // Success
+     let inp=document.getElementById(target);
+     if(!inp){
+      // Try return input or search
+      inp=document.getElementById('returnInput')||document.getElementById('searchInput')||document.getElementById('pimei');
+     }
+     if(inp){
+      inp.value=decodedText;
+      inp.dispatchEvent(new Event('input'));
+      // If return page
+      if(target==='returnInput' || document.getElementById('returnInput')){
+       showReturn(decodedText);
+      } else {
+       // Shop search
+       searchQ=decodedText;
+       let f=DB.inv.find(x=>x.imei===decodedText);
+       if(f){ sellModal(f.id); }
+      }
+     }
+     closeCameraScan();
+     let t=document.getElementById('toast');
+     if(t){ t.innerText='✅ تم المسح: '+decodedText; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'),3000); }
+    },
+    (err)=>{}
+   ).catch(err=>{
+    alert('الكاميرا غير متاحة - استخدم جهاز قارئ الباركود');
+    closeCameraScan();
+   });
+  }catch(e){
+   alert('خطأ في الكاميرا: '+e);
+   closeCameraScan();
+  }
+ },100);
 }
+
+function closeCameraScan(){
+ let wrap=document.getElementById('cameraScanWrap');
+ if(wrap) wrap.classList.add('hidden');
+ if(html5QrCode){
+  try{ html5QrCode.stop().then(()=>{html5QrCode.clear()}).catch(()=>{}) }catch(e){}
+ }
+}
+
+function switchCamera(){
+ // Simple toggle not implemented, just restart
+ closeCameraScan();
+ setTimeout(()=>openCameraScan(window._lastScanTarget),300);
+}
+
+function startScan(targetId){
+ // Ask user which method
+ let choice=confirm('دوس OK للمسح بالكاميرا\nدوس Cancel للمسح بجهاز قارئ الباركود (USB)');
+ if(choice){
+  openCameraScan(targetId);
+ } else {
+  // Hardware scanner mode
+  let inp=document.getElementById(targetId);
+  if(!inp){ inp=document.getElementById('searchInput')||document.getElementById('returnInput')||document.getElementById('pimei'); }
+  if(inp){
+   inp.focus(); inp.value=''; inp.placeholder='جاهز للمسح بجهاز الباركود - وجه الجهاز...';
+   window._lastScanTarget=targetId;
+   // Listen for Enter
+   inp.onkeydown=(e)=>{
+    if(e.key==='Enter'){
+     let val=e.target.value.trim();
+     if(val){
+      if(targetId==='returnInput' || document.getElementById('returnInput')?.contains(e.target) || page==='return'){
+       showReturn(val);
+      } else {
+       let f=DB.inv.find(x=>x.imei===val);
+       if(f){ sellModal(f.id); } else { searchQ=val; render(); }
+      }
+     }
+    }
+   };
+  }
+  let t=document.getElementById('toast');
+  if(t){ t.innerText='📷 جاهز للمسح بجهاز الباركود - وجه الجهاز للمنتج'; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'),4000); }
+ }
+}
+
 
 function sellModal(id){
  let p=DB.inv.find(x=>x.id===id);
