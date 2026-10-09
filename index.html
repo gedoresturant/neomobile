@@ -3,68 +3,107 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Neomobile</title>
+<title>Neomobile Cloud - Supabase</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{font-family:'Cairo',sans-serif}
 body{background:#f8fafc}
-.center{text-align:center}
-@media print{
- body *{visibility:hidden}
- #receiptWrap, #receiptWrap *{visibility:visible}
- #receiptWrap{position:fixed;top:0;right:0;width:80mm;max-width:80mm;margin:0;padding:5mm;background:white;color:black}
- .no-print{display:none!important}
-}
+@media print{ body *{visibility:hidden} #receiptWrap, #receiptWrap *{visibility:visible} #receiptWrap{position:fixed;top:0;right:0;width:80mm;max-width:80mm;margin:0;padding:5mm;background:white;color:black} .no-print{display:none!important} }
 .receipt-line{border-top:1px dashed #000;padding:6px 0;margin:4px 0}
-.receipt-box{border:1px solid #000;padding:0}
 </style>
-
-<style id="redTheme">
-:root{--neo-red:#dc2626;--neo-black:#111;}
-.bg-black{ background: linear-gradient(135deg,#dc2626,#111) !important; }
-.bg-gray-900{ background:#111 !important; }
-.from-red-600.to-black{ background: linear-gradient(90deg,#dc2626,#111) !important; }
-.btn-red{ background: linear-gradient(135deg,#dc2626,#991b1b) !important; color:white; }
-.header-red{ background: linear-gradient(90deg,#111,#dc2626) !important; }
-</style>
-
 </head>
 <body>
 <div id="app"></div>
-<div id="receiptWrap" class="hidden fixed inset-0 bg-red-600/50 z-[999] flex items-center justify-center p-4">
- <div id="receipt" class="bg-white receipt-box w-[302px] max-w-[80mm] text-[12px] leading-5 p-3 text-black"></div>
+<div id="receiptWrap" class="hidden fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4">
+ <div id="receipt" class="bg-white border border-black w-[302px] max-w-[80mm] text-[12px] leading-5 p-3 text-black"></div>
 </div>
 <script>
-const KEY='neo_clean_v2';
-let DB = JSON.parse(localStorage.getItem(KEY)||'null') || {
- cats:[
-  {id:'iph',n:'آيفون',icon:'📱',subs:['iPhone 15','iPhone 14']},
-  {id:'sam',n:'سامسونج',icon:'📱',subs:['S Series','A Series']},
-  {id:'acc',n:'اكسسوارات',icon:'🎧',subs:['سماعات','شواحن','جرابات']}
- ],
- inv:[],
- purchases:[],
- sales:[],
- repairs:[],
- users:[
-  {id:'admin',u:'admin',p:'admin123',n:'المدير العام',role:'admin',perms:{dash:true,invView:true,invAdd:true,invDel:true,cost:true,priceEdit:true,catM:true,shop:true,salesView:true,salesDel:true,repView:true,repM:true,usersM:true,download:true,loss:true,jard:true},active:true}
- ]
-};
-let LOGO_KEY='neo_logo'; let logoData=localStorage.getItem(LOGO_KEY)||'';
+// 🔥 ضع هنا بيانات Supabase بتاعتك
+const SUPABASE_URL = "https://dxxvxfvftrrwwkwcemcd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_yqPSqYX8Zaz_jVnxYr7LaA_CPoH6jzX";
+
+let supabaseClient = null;
+let isSupabaseReady = false;
+try{
+ if(!SUPABASE_URL.includes("YOUR_PROJECT")){
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  isSupabaseReady = true;
+ }
+}catch(e){ console.log(e); }
+
+const KEY='neo_supabase_v1';
+const LOGO_KEY='neo_logo';
+let logoData=localStorage.getItem(LOGO_KEY)||'';
+let invCounter=parseInt(localStorage.getItem('neo_inv_counter')||'1000');
 let cur=JSON.parse(localStorage.getItem(KEY+'_cur')||'null');
-let page='dash'; let searchQ=''; let filterCat='all'; let salesFilter={q:'',cat:'all',from:'',to:''};
-function save(){localStorage.setItem(KEY,JSON.stringify(DB))}
+
+let DB = JSON.parse(localStorage.getItem(KEY)||'null') || {
+ cats:[{id:'iph',n:'آيفون',icon:'📱',subs:[]},{id:'sam',n:'سامسونج',icon:'📱',subs:[]},{id:'acc',n:'اكسسوارات',icon:'🎧',subs:[]}],
+ inv:[], purchases:[], sales:[], repairs:[],
+ users:[{id:'admin',u:'admin',p:'admin123',n:'المدير العام',role:'admin',perms:{dash:true,invView:true,invAdd:true,invDel:true,cost:true,priceEdit:true,catM:true,shop:true,salesView:true,salesDel:true,repView:true,repM:true,usersM:true,download:true,loss:true,jard:true,return:true},active:true}]
+};
+
+async function saveToCloud(){
+ localStorage.setItem(KEY, JSON.stringify(DB));
+ localStorage.setItem('neo_inv_counter', invCounter.toString());
+ if(!isSupabaseReady) return;
+ try{
+  const payload = {
+   id: 1,
+   data: DB,
+   counter: invCounter,
+   jard: JSON.parse(localStorage.getItem('neo_jard')||'[]'),
+   jard_by_item: JSON.parse(localStorage.getItem('neo_jard_by_item')||'[]'),
+   logo: logoData,
+   updated_at: new Date().toISOString(),
+   updated_by: cur?cur.n:'system'
+  };
+  const { error } = await supabaseClient.from('neomobile_data').upsert(payload);
+  if(error) console.error(error); else { let ind=document.getElementById('cloudIndicator'); if(ind) ind.innerHTML='☁️ متزامن Supabase'; }
+ }catch(e){ console.error(e); }
+}
+
+async function loadFromCloud(){
+ if(!isSupabaseReady) return false;
+ try{
+  const { data, error } = await supabaseClient.from('neomobile_data').select('*').eq('id',1).single();
+  if(error || !data) return false;
+  return data;
+ }catch(e){ return false; }
+}
+
+function setupRealtime(){
+ if(!isSupabaseReady) return;
+ const channel = supabaseClient.channel('neomobile-changes')
+  .on('postgres_changes', {event:'*', schema:'public', table:'neomobile_data', filter:'id=eq.1'}, (payload)=>{
+   if(payload.new){
+    let newData = payload.new.data;
+    if(JSON.stringify(newData) !== JSON.stringify(DB)){
+     if(confirm('فيه تحديث جديد من جهاز تاني - تحمّل التحديث؟')){
+      DB = newData;
+      invCounter = payload.new.counter||invCounter;
+      if(payload.new.jard) localStorage.setItem('neo_jard', JSON.stringify(payload.new.jard));
+      if(payload.new.jard_by_item) localStorage.setItem('neo_jard_by_item', JSON.stringify(payload.new.jard_by_item));
+      if(payload.new.logo){ localStorage.setItem(LOGO_KEY, payload.new.logo); logoData=payload.new.logo; }
+      localStorage.setItem(KEY, JSON.stringify(DB));
+      localStorage.setItem('neo_inv_counter', invCounter.toString());
+      render();
+     }
+    }
+   }
+  }).subscribe();
+}
+
+let page='dash'; let searchQ=''; let filterCat='all'; let salesFilter={q:''};
+
+function save(){ saveToCloud(); }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function today(){return new Date().toISOString().slice(0,10)}
 function has(p){if(!cur)return false; if(cur.role==='admin')return true; return cur.perms&&cur.perms[p]}
-function login(){
- let u=document.getElementById('lu').value.trim(), p=document.getElementById('lp').value.trim();
- let f=DB.users.find(x=>x.u===u && x.p===p && x.active);
- if(!f){document.getElementById('le').innerText='اليوزر أو الباسورد غلط';return}
- localStorage.setItem(KEY+'_cur',JSON.stringify(f)); location.reload();
-}
+function login(){ let u=document.getElementById('lu').value.trim(), p=document.getElementById('lp').value.trim(); let f=DB.users.find(x=>x.u===u && x.p===p && x.active); if(!f){document.getElementById('le').innerText='اليوزر أو الباسورد غلط';return} localStorage.setItem(KEY+'_cur',JSON.stringify(f)); location.reload(); }
 function logout(){localStorage.removeItem(KEY+'_cur'); location.reload()}
 function go(p){page=p; render()}
 
@@ -78,629 +117,95 @@ function addProduct(){
  let supplier=document.getElementById('psup').value.trim();
  let invNo=document.getElementById('pinv').value.trim();
  let defSell=parseFloat(document.getElementById('psell').value)||0;
- if(!name||!imei||qty<=0||unitCost<=0||!supplier){alert('اكمل: اسم الصنف، الباركود، الكمية، سعر الشراء، المورد');return}
- let existing=DB.inv.find(x=>x.imei===imei || (x.name.toLowerCase()===name.toLowerCase() && x.sub.toLowerCase()===sub.toLowerCase()));
- if(existing){
-   let oldTotal=existing.qty*existing.avgBuy;
-   let newTotal=qty*unitCost;
-   let totalQty=existing.qty+qty;
-   let newAvg=(oldTotal+newTotal)/totalQty;
-   existing.qty=totalQty; existing.avgBuy=newAvg; existing.totalCost=totalQty*newAvg; existing.lastSupplier=supplier;
-   DB.purchases.push({id:uid(),productId:existing.id,name,imei,qty,unitCost,totalCost:newTotal,avgAfter:newAvg,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
-   alert(`تم تحديث: ${name}\nالكمية الجديدة: ${totalQty}\nالمتوسط: ${newAvg.toFixed(2)} ج`);
- }else{
-   let id=uid();
-   DB.inv.push({id,name,catId:cat,sub,imei,qty,avgBuy:unitCost,totalCost:qty*unitCost,defaultSell:defSell,img:'📱',lastSupplier:supplier});
-   DB.purchases.push({id:uid(),productId:id,name,imei,qty,unitCost,totalCost:qty*unitCost,avgAfter:unitCost,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
-   alert('تمت الإضافة');
- }
+ if(!name||!imei||qty<=0||unitCost<=0||!supplier){alert('اكمل البيانات');return}
+ let existing=DB.inv.find(x=>x.imei===imei);
+ if(existing){ let oldTotal=existing.qty*existing.avgBuy; let newTotal=qty*unitCost; let totalQty=existing.qty+qty; let newAvg=(oldTotal+newTotal)/totalQty; existing.qty=totalQty; existing.avgBuy=newAvg; existing.totalCost=totalQty*newAvg; existing.lastSupplier=supplier; DB.purchases.push({id:uid(),productId:existing.id,name,imei,qty,unitCost,totalCost:newTotal,avgAfter:newAvg,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n}); alert(`تم التحديث: ${totalQty}`); }else{ let id=uid(); DB.inv.push({id,name,catId:cat,sub,imei,qty,avgBuy:unitCost,totalCost:qty*unitCost,defaultSell:defSell,img:'📱',lastSupplier:supplier}); DB.purchases.push({id:uid(),productId:id,name,imei,qty,unitCost,totalCost:qty*unitCost,avgAfter:unitCost,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n}); alert('تمت الإضافة'); }
  save(); render();
 }
 
+let html5QrCode=null; let _lastScanTarget='searchInput';
+function openCameraScan(targetId){ let wrap=document.getElementById('cameraScanWrap'); if(!wrap){ let div=document.createElement('div'); div.id='cameraScanWrap'; div.className='fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4'; div.innerHTML=`<div class="bg-white rounded-3xl p-5 w-full max-w-md text-center"><div class="font-black text-lg mb-2">📷 مسح بالكاميرا</div><div id="reader" class="w-full rounded-2xl overflow-hidden border-2 border-red-200"></div><div class="flex gap-2 mt-4"><button onclick="closeCameraScan()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">إغلاق</button></div></div>`; document.body.appendChild(div); wrap=div; } else wrap.classList.remove('hidden'); setTimeout(()=>{ try{ if(html5QrCode){ try{html5QrCode.stop()}catch(e){} } html5QrCode=new Html5Qrcode("reader"); _lastScanTarget=targetId||'searchInput'; html5QrCode.start({facingMode:"environment"},{fps:10,qrbox:{width:250,height:250}},(decodedText)=>{ let inp=document.getElementById(_lastScanTarget)||document.getElementById('returnInput')||document.getElementById('searchInput')||document.getElementById('pimei'); if(inp){ inp.value=decodedText; inp.dispatchEvent(new Event('input')); if(_lastScanTarget==='returnInput'||page==='return') showReturn(decodedText); else { let f=DB.inv.find(x=>x.imei===decodedText); if(f) sellModal(f.id); } } closeCameraScan(); },()=>{}).catch(()=>{ alert('الكاميرا غير متاحة'); closeCameraScan(); }); }catch(e){ closeCameraScan(); } },100); }
+function closeCameraScan(){ let wrap=document.getElementById('cameraScanWrap'); if(wrap) wrap.classList.add('hidden'); if(html5QrCode){ try{ html5QrCode.stop().then(()=>{html5QrCode.clear()}).catch(()=>{}) }catch(e){} } }
+function startScan(targetId){ let choice=confirm('OK = كاميرا\nCancel = جهاز باركود USB'); if(choice) openCameraScan(targetId); else { let inp=document.getElementById(targetId)||document.getElementById('searchInput')||document.getElementById('returnInput')||document.getElementById('pimei'); if(inp){ inp.focus(); inp.value=''; inp.placeholder='جاهز للمسح بجهاز الباركود...'; _lastScanTarget=targetId; inp.onkeydown=(e)=>{ if(e.key==='Enter'){ let val=e.target.value.trim(); if(val){ if(targetId==='returnInput'||page==='return') showReturn(val); else { let f=DB.inv.find(x=>x.imei===val); if(f) sellModal(f.id); else { searchQ=val; render(); } } } } }; } } }
 
-let html5QrCode=null;
-function openCameraScan(targetId){
- let wrap=document.getElementById('cameraScanWrap');
- if(!wrap){
-  let div=document.createElement('div');
-  div.id='cameraScanWrap';
-  div.className='fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4';
-  div.innerHTML=`
-   <div class="bg-white rounded-3xl p-5 w-full max-w-md text-center">
-    <div class="font-black text-lg mb-2">📷 مسح بالكاميرا</div>
-    <div id="reader" class="w-full rounded-2xl overflow-hidden border-2 border-red-200"></div>
-    <div class="text-xs text-gray-500 mt-2">وجه الكاميرا للباركود</div>
-    <div class="flex gap-2 mt-4">
-     <button onclick="closeCameraScan()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">إغلاق</button>
-     <button onclick="switchCamera()" class="flex-1 bg-black text-white py-3 rounded-xl font-bold">تبديل الكاميرا</button>
-    </div>
-   </div>
-  `;
-  document.body.appendChild(div);
-  wrap=div;
- } else {
-  wrap.classList.remove('hidden');
- }
- 
- // Start scanner
- setTimeout(()=>{
-  try{
-   if(html5QrCode){ try{html5QrCode.stop()}catch(e){} }
-   html5QrCode=new Html5Qrcode("reader");
-   let target=targetId||window._lastScanTarget||'searchInput';
-   window._lastScanTarget=target;
-   html5QrCode.start(
-    {facingMode:"environment"},
-    {fps:10, qrbox:{width:250,height:250}},
-    (decodedText)=>{
-     // Success
-     let inp=document.getElementById(target);
-     if(!inp){
-      // Try return input or search
-      inp=document.getElementById('returnInput')||document.getElementById('searchInput')||document.getElementById('pimei');
-     }
-     if(inp){
-      inp.value=decodedText;
-      inp.dispatchEvent(new Event('input'));
-      // If return page
-      if(target==='returnInput' || document.getElementById('returnInput')){
-       showReturn(decodedText);
-      } else {
-       // Shop search
-       searchQ=decodedText;
-       let f=DB.inv.find(x=>x.imei===decodedText);
-       if(f){ sellModal(f.id); }
-      }
-     }
-     closeCameraScan();
-     let t=document.getElementById('toast');
-     if(t){ t.innerText='✅ تم المسح: '+decodedText; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'),3000); }
-    },
-    (err)=>{}
-   ).catch(err=>{
-    alert('الكاميرا غير متاحة - استخدم جهاز قارئ الباركود');
-    closeCameraScan();
-   });
-  }catch(e){
-   alert('خطأ في الكاميرا: '+e);
-   closeCameraScan();
-  }
- },100);
-}
+function sellModal(id){ let p=DB.inv.find(x=>x.id===id); if(!p)return; let htmlM=`<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"><div class="bg-white rounded-3xl p-6 w-full max-w-sm text-center"><div class="text-3xl mb-2">${p.img}</div><div class="font-black">${p.name}</div><div class="text-xs text-gray-400">متاح: ${p.qty}</div><div class="mt-4 space-y-2 text-right"><label class="text-sm font-bold">سعر البيع *</label><input id="sellPrice" type="number" placeholder="سعر البيع" class="w-full border rounded-xl px-3 py-3 text-center text-lg font-black"><input id="sellClient" placeholder="اسم العميل" class="w-full border rounded-xl px-3 py-2"><input id="sellPhone" placeholder="رقم الهاتف" class="w-full border rounded-xl px-3 py-2"></div><div class="flex gap-2 mt-4"><button onclick="doSell('${p.id}')" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-black">بيع #${invCounter+1}</button><button onclick="render()" class="flex-1 bg-gray-100 py-3 rounded-xl">إلغاء</button></div></div></div>`; document.getElementById('app').insertAdjacentHTML('beforeend',htmlM); setTimeout(()=>document.getElementById('sellPrice')?.focus(),100); }
+function doSell(id){ let p=DB.inv.find(x=>x.id===id); let price=parseFloat(document.getElementById('sellPrice').value); let client=document.getElementById('sellClient').value.trim()||'عميل'; let phone=document.getElementById('sellPhone').value.trim()||''; if(!price||price<=0){alert('سعر البيع');return} if(p.qty<=0){alert('خلص');return} invCounter++; p.qty-=1; let saleId=uid(); let seq=invCounter.toString(); DB.sales.push({id:saleId,productId:p.id,name:p.name,imei:p.imei,qty:1,buyCost:p.avgBuy,sellPrice:price,profit:price-p.avgBuy,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n,client,clientPhone:phone,invoiceNo:seq,sequentialNo:seq}); save(); showReceipt(DB.sales[DB.sales.length-1]); render(); }
+function showReceipt(s){ let r=document.getElementById('receipt'); r.innerHTML=`${logoData?`<div class="text-center mb-2"><img src="${logoData}" class="mx-auto max-h-12 max-w-[120px]"></div>`:''}<div class="text-center font-black text-[18px] mb-1">Neomobile</div><div class="receipt-line"></div><div class="flex justify-between"><span>فاتورة #</span><b>#${s.invoiceNo}</b></div><div class="flex justify-between"><span>التاريخ:</span><span>${s.date} ${s.time}</span></div><div class="flex justify-between"><span>العميل:</span><b>${s.client}</b></div><div class="receipt-line"></div><div class="font-bold">${s.name}</div><div class="text-[10px]">${s.imei}</div><div class="flex justify-between mt-1"><span>الكمية: 1</span><b>${s.sellPrice} ج</b></div><div class="receipt-line"></div><div class="flex justify-between font-black"><span>الإجمالي</span><span>${s.sellPrice} ج</span></div><div class="receipt-line"></div><div class="text-center text-[10px]">شكراً</div><div class="no-print mt-3 space-y-2"><button onclick="window.print()" class="w-full bg-black text-white py-2 rounded-lg">🖨️ طباعة</button><button onclick="document.getElementById('receiptWrap').classList.add('hidden')" class="w-full bg-gray-100 py-2 rounded-lg">إغلاق</button></div>`; document.getElementById('receiptWrap').classList.remove('hidden'); }
 
-function closeCameraScan(){
- let wrap=document.getElementById('cameraScanWrap');
- if(wrap) wrap.classList.add('hidden');
- if(html5QrCode){
-  try{ html5QrCode.stop().then(()=>{html5QrCode.clear()}).catch(()=>{}) }catch(e){}
- }
-}
-
-function switchCamera(){
- // Simple toggle not implemented, just restart
- closeCameraScan();
- setTimeout(()=>openCameraScan(window._lastScanTarget),300);
-}
-
-function startScan(targetId){
- // Ask user which method
- let choice=confirm('دوس OK للمسح بالكاميرا\nدوس Cancel للمسح بجهاز قارئ الباركود (USB)');
- if(choice){
-  openCameraScan(targetId);
- } else {
-  // Hardware scanner mode
-  let inp=document.getElementById(targetId);
-  if(!inp){ inp=document.getElementById('searchInput')||document.getElementById('returnInput')||document.getElementById('pimei'); }
-  if(inp){
-   inp.focus(); inp.value=''; inp.placeholder='جاهز للمسح بجهاز الباركود - وجه الجهاز...';
-   window._lastScanTarget=targetId;
-   // Listen for Enter
-   inp.onkeydown=(e)=>{
-    if(e.key==='Enter'){
-     let val=e.target.value.trim();
-     if(val){
-      if(targetId==='returnInput' || document.getElementById('returnInput')?.contains(e.target) || page==='return'){
-       showReturn(val);
-      } else {
-       let f=DB.inv.find(x=>x.imei===val);
-       if(f){ sellModal(f.id); } else { searchQ=val; render(); }
-      }
-     }
-    }
-   };
-  }
-  let t=document.getElementById('toast');
-  if(t){ t.innerText='📷 جاهز للمسح بجهاز الباركود - وجه الجهاز للمنتج'; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'),4000); }
- }
-}
-
-
-function sellModal(id){
- let p=DB.inv.find(x=>x.id===id);
- if(!p)return;
- let html=`
- <div class="fixed inset-0 bg-red-600/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-3xl p-6 w-full max-w-sm text-center">
-   <div class="text-3xl mb-2">${p.img}</div>
-   <div class="font-black">${p.name}</div>
-   <div class="text-xs text-gray-400">متاح: ${p.qty} - الشراء: ${has('cost')?p.avgBuy.toFixed(0):'***'}</div>
-   <div class="mt-4 space-y-2 text-right">
-    <label class="text-sm font-bold">سعر البيع *</label>
-    <input id="sellPrice" type="number" placeholder="اكتب سعر البيع" class="w-full border rounded-xl px-3 py-3 text-center text-lg font-black">
-    <label class="text-sm font-bold">العميل (اختياري)</label>
-    <input id="sellClient" placeholder="اسم العميل" class="w-full border rounded-xl px-3 py-2">
-    <input id="sellPhone" placeholder="رقم الهاتف" class="w-full border rounded-xl px-3 py-2">
-   </div>
-   <div class="flex gap-2 mt-4">
-    <button onclick="doSell('${p.id}')" class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-black">بيع + إيصال</button>
-    <button onclick="render()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">إلغاء</button>
-   </div>
-  </div>
- </div>`;
- document.getElementById('app').insertAdjacentHTML('beforeend',html);
- setTimeout(()=>document.getElementById('sellPrice')?.focus(),100);
-}
-
-function doSell(id){
- let p=DB.inv.find(x=>x.id===id);
- let price=parseFloat(document.getElementById('sellPrice').value);
- let client=document.getElementById('sellClient').value.trim()||'عميل';
- let phone=document.getElementById('sellPhone').value.trim()||'';
- if(!price||price<=0){alert('اكتب سعر البيع');return}
- if(!has('loss') && price <= p.avgBuy){alert(`لا يمكن البيع بخسارة\nسعر الشراء: ${p.avgBuy.toFixed(0)} ج\nسعر البيع لازم يكون أكبر`);return}
- if(p.qty<=0){alert('الكمية خلصت');return}
- p.qty-=1;
- let saleId=uid();
- DB.sales.push({id:saleId,productId:p.id,name:p.name,imei:p.imei,qty:1,buyCost:p.avgBuy,sellPrice:price,profit:price-p.avgBuy,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n,client,clientPhone:phone,invoiceNo:saleId.slice(-6).toUpperCase()});
- save();
- showReceipt(DB.sales[DB.sales.length-1]);
- render();
-}
-
-function showReceipt(s){
- let r=document.getElementById('receipt');
- r.innerHTML=`
-  ${logoData?`<div class="center mb-2"><img src="${logoData}" class="mx-auto max-h-12 max-w-[120px]"></div>`:``}
-  <div class="center font-black text-[18px] mb-1">Neomobile</div>
-  <div class="receipt-line"></div>
-  <div class="flex justify-between"><span>رقم العرض:</span><b>QT-${s.invoiceNo}</b></div>
-  <div class="flex justify-between"><span>التاريخ:</span><span>${s.date} ${s.time}</span></div>
-  <div class="flex justify-between"><span>العميل:</span><b>${s.client}</b></div>
-  <div class="flex justify-between"><span>الهاتف:</span><span>${s.clientPhone||''}</span></div>
-  <div class="receipt-line"></div>
-  <div class="font-bold">${s.name}</div>
-  <div class="text-[10px]">IMEI: ${s.imei}</div>
-  <div class="flex justify-between mt-1"><span>الكمية: 1</span><b>${s.sellPrice.toLocaleString()} ج</b></div>
-  <div class="receipt-line"></div>
-  <div class="flex justify-between font-black text-[14px]"><span>الإجمالي</span><span>${s.sellPrice.toLocaleString()} ج</span></div>
-  <div class="receipt-line"></div>
-  <div class="center text-[10px]">شكراً لزيارتكم</div>
-  <div class="no-print mt-3 space-y-2">
-   <button onclick="doDirectPrint()" class="w-full bg-gradient-to-r from-red-600 to-black text-white py-2 rounded-lg font-bold">🖨️ حفظ / طباعة</button>
-   <button onclick="shareWA()" class="w-full bg-emerald-500 text-white py-2 rounded-lg font-bold">واتساب</button>
-   <button onclick="document.getElementById('receiptWrap').classList.add('hidden')" class="w-full bg-gray-100 py-2 rounded-lg font-bold">إغلاق</button>
-   <button onclick="setupPrinter()" class="w-full border py-2 rounded-lg text-xs">⚙️ إعداد الطابعة</button>
-  </div>
- `;
- document.getElementById('receiptWrap').classList.remove('hidden');
- window._lastSale=s;
-}
-function doDirectPrint(){ window.print() }
-function shareWA(){
- let s=window._lastSale; if(!s)return;
- let txt=`Neomobile\nرقم: QT-${s.invoiceNo}\nالعميل: ${s.client}\nالصنف: ${s.name}\nIMEI: ${s.imei}\nالسعر: ${s.sellPrice} ج\nشكراً لزيارتكم`;
- window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
-}
-function setupPrinter(){alert('إعداد الطابعة الحرارية 80mm:\n\n1- موبايل: نزل تطبيق RawBT من المتجر واربط الطابعة بالبلوتوث\n2- كمبيوتر: خلي الطابعة الافتراضية 80mm وظبط مقاس الورق 80mm x 200mm\n3- دوس حفظ/طباعة واختار الطابعة')}
-
-function exportSales(){
- let rows=filteredSales();
- let csv='التاريخ,الصنف,IMEI,الكمية,سعر الشراء,سعر البيع,الربح,العميل,البائع,رقم الفاتورة\n';
- rows.forEach(s=>{csv+=`${s.date},${s.name},${s.imei},${s.qty},${s.buyCost},${s.sellPrice},${s.profit},${s.client},${s.by},${s.invoiceNo}\n`});
- let blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
- let a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='مبيعات_Neomobile_'+today()+'.csv'; a.click();
-}
-
-function filteredSales(){
- let q=salesFilter.q.toLowerCase(); let cat=salesFilter.cat; let from=salesFilter.from; let to=salesFilter.to;
- return DB.sales.filter(s=>{
-  if(q && ! (s.name.toLowerCase().includes(q) || s.client.toLowerCase().includes(q) || s.imei.includes(q))) return false;
-  if(cat!=='all'){ let prod=DB.inv.find(p=>p.id===s.productId); if(!prod||prod.catId!==cat) return false; }
-  if(from && s.date<from) return false;
-  if(to && s.date>to) return false;
-  return true;
- }).sort((a,b)=>b.date.localeCompare(a.date));
-}
-
-function productHistory(id){
- let p=DB.inv.find(x=>x.id===id) || DB.inv.find(x=>x.imei===id);
- if(!p){alert('المنتج غير موجود');return}
- let purchases=DB.purchases.filter(x=>x.productId===p.id || x.imei===p.imei);
- let sales=DB.sales.filter(x=>x.productId===p.id || x.imei===p.imei);
- let html=`
- <div class="fixed inset-0 bg-red-600/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-3xl p-5 w-full max-w-lg max-h-[80vh] overflow-auto text-center">
-   <div class="font-black text-lg">📜 سجل ${p.name}</div>
-   <div class="text-xs text-gray-400">${p.imei} - متاح: ${p.qty} - متوسط: ${p.avgBuy.toFixed(0)}</div>
-   <div class="mt-4 text-right">
-    <div class="font-bold">المشتريات (${purchases.length})</div>
-    ${purchases.map(x=>`<div class="border-b py-2 text-xs"><b>${x.date} ${x.time}</b> - كمية: ${x.qty} - شراء: ${x.unitCost} - متوسط بعد: ${x.avgAfter.toFixed(0)} - مورد: ${x.supplier} - فاتورة: ${x.invoiceNo||''}</div>`).join('')||'<div class="text-xs text-gray-400">لا يوجد</div>'}
-    <div class="font-bold mt-3">المبيعات (${sales.length})</div>
-    ${sales.map(x=>`<div class="border-b py-2 text-xs"><b>${x.date}</b> - عميل: ${x.client} - بيع: ${x.sellPrice} - ربح: ${x.profit.toFixed(0)} - بواسطة: ${x.by}</div>`).join('')||'<div class="text-xs text-gray-400">لا يوجد</div>'}
-   </div>
-   <button onclick="render()" class="mt-4 w-full bg-gray-100 py-2 rounded-xl font-bold">إغلاق</button>
-  </div>
- </div>`;
- document.getElementById('app').insertAdjacentHTML('beforeend',html);
-}
-
-function addUser(){
- let n=document.getElementById('un').value.trim();
- let u=document.getElementById('uu').value.trim();
- let p=document.getElementById('up').value.trim();
- let role=document.getElementById('ur').value;
- if(!n||!u||!p){alert('اكمل البيانات');return}
- let perms={};
- document.querySelectorAll('.permChk').forEach(ch=>{perms[ch.dataset.perm]=ch.checked});
- DB.users.push({id:uid(),u,p,n,role,perms,active:true});
- save(); render(); alert('تمت إضافة المستخدم');
-}
-function editPerms(id){
- let user=DB.users.find(x=>x.id===id); if(!user)return;
- let html=`<div class="fixed inset-0 bg-red-600/50 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-3xl p-5 w-full max-w-md max-h-[80vh] overflow-auto text-center">
-   <div class="font-black">✏️ تعديل صلاحيات ${user.n}</div>
-   <div class="grid grid-cols-2 gap-2 mt-4 text-right text-sm">
-    ${Object.keys(user.perms).map(k=>{let m={'dash':'لوحة التحكم','invView':'عرض المخزن','invAdd':'إضافة للمخزن','invDel':'مسح المخزن','cost':'عرض التكلفة','priceEdit':'تعديل السعر','catM':'إدارة الفئات','shop':'نقطة البيع','salesView':'عرض المبيعات','salesDel':'مسح المبيعات','repView':'عرض الصيانة','repM':'إدارة الصيانة','usersM':'إدارة المستخدمين','download':'تحميل النسخة','loss':'البيع بخسارة','jard':'الجرد'}; let l=m[k]||k; return `<label class="flex items-center gap-2 border rounded-xl px-3 py-2 justify-center text-center"><input type="checkbox" data-perm="${k}" ${user.perms[k]?'checked':''} class="editPerm"> ${l}</label>`}).join('')}
-   </div>
-   <div class="flex gap-2 mt-4">
-    <button onclick="savePerms('${id}')" class="flex-1 bg-emerald-600 text-white py-2 rounded-xl font-bold">حفظ</button>
-    <button onclick="render()" class="flex-1 bg-gray-100 py-2 rounded-xl font-bold">إلغاء</button>
-   </div>
-  </div>
- </div>`;
- document.getElementById('app').insertAdjacentHTML('beforeend',html);
-}
-function savePerms(id){
- let user=DB.users.find(x=>x.id===id);
- document.querySelectorAll('.editPerm').forEach(ch=>{user.perms[ch.dataset.perm]=ch.checked});
- save(); render();
-}
-function changePass(id){
- let np=prompt('الباسورد الجديد:');
- if(!np)return;
- let user=DB.users.find(x=>x.id===id); user.p=np; save(); alert('تم تغيير الباسورد');
-}
-
-function uploadLogo(){
- let inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
- inp.onchange=e=>{
-  let file=e.target.files[0]; if(!file)return;
-  let reader=new FileReader();
-  reader.onload=ev=>{
-   localStorage.setItem(LOGO_KEY, ev.target.result);
-   logoData=ev.target.result;
-   alert('تم حفظ اللوجو');
-   render();
-  };
-  reader.readAsDataURL(file);
- };
- inp.click();
-}
-function removeLogo(){ localStorage.removeItem(LOGO_KEY); logoData=''; alert('تم حذف اللوجو'); render(); }
+function uploadLogo(){ let inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.onchange=e=>{ let f=e.target.files[0]; if(!f)return; let rd=new FileReader(); rd.onload=ev=>{ localStorage.setItem(LOGO_KEY, ev.target.result); logoData=ev.target.result; save(); render(); }; rd.readAsDataURL(f); }; inp.click(); }
+function removeLogo(){ localStorage.removeItem(LOGO_KEY); logoData=''; save(); render(); }
 
 function showReturn(imei){
- let p=DB.inv.find(x=>x.imei===imei) || DB.inv.find(x=>x.id===imei);
- let purchases=DB.purchases.filter(x=>x.imei===imei || (p && x.productId===p.id));
- let sales=DB.sales.filter(x=>x.imei===imei || (p && x.productId===p.id));
- if(!p && !purchases.length && !sales.length){ alert('المنتج غير موجود'); return; }
- let prodName=p? p.name : (purchases[0]?.name || sales[0]?.name || 'غير معروف');
- let lastPurchase=purchases.length? purchases[purchases.length-1] : null;
- let lastSale=sales.length? sales[sales.length-1] : null;
- let supplier=lastPurchase? lastPurchase.supplier : (p? p.lastSupplier : 'غير معروف');
- let buyPrice=lastPurchase? lastPurchase.unitCost : (p? p.avgBuy : 0);
- let buyDate=lastPurchase? lastPurchase.date : '';
- let sellPrice=lastSale? lastSale.sellPrice : 'لم يباع بعد';
- let sellDate=lastSale? lastSale.date : '';
- 
- let htmlModal=`<div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-  <div class="bg-white rounded-3xl p-6 w-full max-w-lg text-center shadow-2xl">
-   <div class="w-16 h-16 mx-auto mb-3 bg-red-100 rounded-2xl flex items-center justify-center text-2xl">↩️</div>
-   <div class="font-black text-xl">مرتجع - تفاصيل المنتج</div>
-   <div class="mt-4 space-y-3 text-right bg-gray-50 rounded-2xl p-4">
-    <div class="flex justify-between border-b pb-2"><span class="text-gray-500">نوع المنتج</span><b>${prodName}</b></div>
-    <div class="flex justify-between border-b pb-2"><span class="text-gray-500">الباركود / IMEI</span><b class="text-xs">${imei}</b></div>
-    <div class="flex justify-between border-b pb-2"><span class="text-gray-500">تاريخ الشراء</span><b>${buyDate||'غير مسجل'}</b></div>
-    <div class="flex justify-between border-b pb-2"><span class="text-gray-500">سعر الشراء</span><b class="text-red-600">${buyPrice} ج</b></div>
-    <div class="flex justify-between border-b pb-2"><span class="text-gray-500">المورد</span><b>${supplier}</b></div>
-    <div class="flex justify-between border-b pb-2"><span class="text-gray-500">اتباع بكام</span><b class="text-emerald-600">${sellPrice}${sellPrice!=='لم يباع بعد'?' ج':''}</b></div>
-    <div class="flex justify-between"><span class="text-gray-500">تاريخ البيع</span><b>${sellDate||'لم يباع'}</b></div>
-   </div>
-   <div class="mt-3 text-right">
-    <div class="text-xs font-bold mb-1">سجل المشتريات (${purchases.length})</div>
-    <div class="max-h-20 overflow-auto text-[11px] bg-white border rounded-xl p-2">${purchases.map(x=>`<div>${x.date} - ${x.qty} x ${x.unitCost} - مورد: ${x.supplier}</div>`).join('')||'لا يوجد'}</div>
-    <div class="text-xs font-bold mt-2 mb-1">سجل المبيعات (${sales.length})</div>
-    <div class="max-h-20 overflow-auto text-[11px] bg-white border rounded-xl p-2">${sales.map(x=>`<div>${x.date} - عميل: ${x.client} - بيع: ${x.sellPrice} - ربح: ${x.profit}</div>`).join('')||'لم يباع بعد'}</div>
-   </div>
-   <div class="flex gap-2 mt-4">
-    <button onclick="if(confirm('تأكيد إرجاع المنتج للمخزن؟')){let prod=DB.inv.find(x=>x.imei==='${imei}'); if(prod){prod.qty+=1;}else if(p){p.qty+=1;} save(); alert('تم إرجاع المنتج'); render();}else{render()}" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-black">تأكيد الإرجاع للمخزن</button>
-    <button onclick="render()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">إغلاق</button>
-   </div>
-  </div>
- </div>`;
- document.getElementById('app').insertAdjacentHTML('beforeend',htmlModal);
+ let p=DB.inv.find(x=>x.imei===imei);
+ let purchases=DB.purchases.filter(x=>x.imei===imei|| (p&&x.productId===p.id));
+ let sales=DB.sales.filter(x=>x.imei===imei|| (p&&x.productId===p.id));
+ if(!p && !purchases.length){ alert('غير موجود'); return; }
+ let prodName=p? p.name : (purchases[0]?.name||'غير معروف');
+ let lastPurchase=purchases.length? purchases[purchases.length-1]:null;
+ let supplier=lastPurchase? lastPurchase.supplier : (p? p.lastSupplier:'غير معروف');
+ let buyPrice=lastPurchase? lastPurchase.unitCost : (p? p.avgBuy:0);
+ let lastSale=sales.length? sales[sales.length-1]:null;
+ let sellPrice=lastSale? lastSale.sellPrice:'لم يباع';
+ let htmlM=`<div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"><div class="bg-white rounded-3xl p-6 w-full max-w-lg text-center"><div class="font-black text-xl">↩️ ${prodName}</div><div class="mt-4 space-y-3 text-right bg-gray-50 rounded-2xl p-4"><div class="flex justify-between border-b pb-2"><span>نوع المنتج</span><b>${prodName}</b></div><div class="flex justify-between border-b pb-2"><span>الباركود</span><b class="text-xs">${imei}</b></div><div class="flex justify-between border-b pb-2"><span>سعر الشراء</span><b class="text-red-600">${buyPrice} ج</b></div><div class="flex justify-between border-b pb-2"><span>المورد</span><b>${supplier}</b></div><div class="flex justify-between"><span>اتباع بكام</span><b class="text-emerald-600">${sellPrice}</b></div></div><div class="flex gap-2 mt-4"><button onclick="let prod=DB.inv.find(x=>x.imei==='${imei}'); if(prod)prod.qty+=1; save(); render();" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-black">إرجاع</button><button onclick="render()" class="flex-1 bg-gray-100 py-3 rounded-xl">إغلاق</button></div></div></div>`;
+ document.getElementById('app').insertAdjacentHTML('beforeend',htmlM);
 }
+function showReturnByInvoice(invNo){ let sale=DB.sales.find(s=>s.invoiceNo===invNo); if(!sale){alert('فاتورة غير موجودة');return} showReceipt(sale); }
 
-function deleteUser(id){
- if(id==='admin'){alert('لا يمكن مسح الأدمن');return}
- if(!confirm('متأكد تمسح اليوزر؟'))return;
- DB.users=DB.users.filter(x=>x.id!==id); save(); render();
-}
-
-
-function doJard(type){
- let totalQty=DB.inv.reduce((s,x)=>s+x.qty,0);
- let totalVal=DB.inv.reduce((s,x)=>s+x.qty*x.avgBuy,0);
- let hist=JSON.parse(localStorage.getItem('neo_jard')||'[]');
- hist.push({date:today(),time:new Date().toLocaleTimeString('ar-EG'),type,qty:totalQty,value:totalVal,by:cur.n,details:JSON.parse(JSON.stringify(DB.inv))});
- localStorage.setItem('neo_jard',JSON.stringify(hist));
- alert(`تم حفظ الجرد ${type} بنجاح\nالقطع: ${totalQty}\nالقيمة: ${totalVal.toLocaleString()} ج`);
- render();
-}
-function exportJard(){
- let hist=JSON.parse(localStorage.getItem('neo_jard')||'[]');
- if(!hist.length){alert('لا يوجد جرد');return}
- let csv='التاريخ,النوع,عدد القطع,قيمة المخزن,بواسطة\n';
- hist.forEach(h=>{csv+=`${h.date} ${h.time},${h.type},${h.qty},${h.value},${h.by}\n`;});
- csv+='\nتفاصيل اخر جرد\nالصنف,الباركود,الكمية,متوسط الشراء,القيمة\n';
- DB.inv.forEach(i=>{csv+=`${i.name},${i.imei},${i.qty},${i.avgBuy},${i.qty*i.avgBuy}\n`;});
- let blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
- let a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='جرد_Neomobile_'+today()+'.csv'; a.click();
-}
+function addUser(){ let n=document.getElementById('un').value.trim(); let u=document.getElementById('uu').value.trim(); let p=document.getElementById('up').value.trim(); if(!n||!u||!p){alert('اكمل');return} let perms={}; document.querySelectorAll('.permChk').forEach(ch=>{perms[ch.dataset.perm]=ch.checked}); DB.users.push({id:uid(),u,p,n,role:'sales',perms,active:true}); save(); render(); }
 
 function render(){
  let app=document.getElementById('app');
  if(!cur){
-  app.innerHTML=`
-  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-900 via-red-700 to-black p-4">
-   <div class="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
-    <div class="w-16 h-16 bg-gradient-to-r from-red-600 to-black text-white rounded-2xl flex items-center justify-center font-black text-2xl mx-auto mb-3">N</div>
-    <div class="font-black text-2xl">Neomobile</div>
-    <div class="text-xs text-gray-400 mt-1 mb-6">نظام إدارة المبيعات</div>
-    <input id="lu" placeholder="اسم المستخدم" class="w-full border rounded-xl px-3 py-3 mb-2 text-center">
-    <input id="lp" type="password" placeholder="كلمة المرور" class="w-full border rounded-xl px-3 py-3 mb-2 text-center">
-    <div id="le" class="text-red-500 text-xs mb-2"></div>
-    <button onclick="login()" class="w-full bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">دخول</button>
-   </div>
-  </div>`;
-  return;
+  app.innerHTML=`<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-900 via-red-700 to-black p-4"><div class="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">${logoData?`<img src="${logoData}" class="mx-auto max-h-16 mb-3 rounded-xl">`:`<div class="w-16 h-16 bg-gradient-to-r from-red-600 to-black text-white rounded-2xl flex items-center justify-center font-black text-2xl mx-auto mb-3">N</div>`}<div class="font-black text-2xl">Neomobile Cloud</div><div class="text-xs ${isSupabaseReady?'text-emerald-600':'text-red-500'} mb-4">${isSupabaseReady?'☁️ متصل Supabase - متزامن':'⚠️ ضع إعدادات Supabase'}</div><input id="lu" placeholder="اسم المستخدم" class="w-full border rounded-xl px-3 py-3 mb-2 text-center"><input id="lp" type="password" placeholder="كلمة المرور" class="w-full border rounded-xl px-3 py-3 mb-2 text-center"><div id="le" class="text-red-500 text-xs mb-2"></div><button onclick="login()" class="w-full bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">دخول</button></div></div>`; return;
  }
- let menu=`
-  <div class="bg-white border-b sticky top-0 z-40">
-   <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-2"><div class="w-9 h-9 bg-gradient-to-r from-red-600 to-black text-white rounded-xl flex items-center justify-center font-black">N</div><b>Neomobile</b></div>
-    <div class="text-xs">مرحبا ${cur.n} <button onclick="logout()" class="mr-2 bg-gray-100 px-3 py-1 rounded-lg">خروج</button></div>
-   </div>
-   <div class="max-w-6xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
-    ${has('dash')?`<button onclick="go('dash')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='dash'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">الرئيسية</button>`:''}
-    ${has('invView')?`<button onclick="go('inv')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='inv'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">المخزن</button>`:''}
-    ${has('shop')?`<button onclick="go('shop')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='shop'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">نقطة البيع</button>`:''}
-    ${has('salesView')?`<button onclick="go('sales')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='sales'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">المبيعات</button>`:''}
-    ${has('repView')?`<button onclick="go('rep')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='rep'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">الصيانة</button>`:''}
-    ${has('catM')?`<button onclick="go('cats')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='cats'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">الفئات</button>`:''}
-    ${has('jard')?`<button onclick="go('return')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='return'?'bg-red-600 text-white':'bg-gray-100'}">↩️ المرتجع</button>`:''}
-    ${has('jard')?`<button onclick="go('jard')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='jard'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">📦 الجرد</button>`:''}
-    ${has('usersM')?`<button onclick="go('users')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='users'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">المستخدمين</button>`:''}
-   </div>
-  </div>`;
- let toast=`<div id="toast" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-red-600 to-black text-white px-4 py-2 rounded-full text-sm z-50"></div>`;
+ let menu=`<div class="bg-white border-b sticky top-0 z-40"><div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2">${logoData?`<img src="${logoData}" class="h-8 rounded-lg">`:`<div class="w-9 h-9 bg-gradient-to-r from-red-600 to-black text-white rounded-xl flex items-center justify-center font-black">N</div>`}<b>Neomobile Cloud</b><span id="cloudIndicator" class="text-[10px] ${isSupabaseReady?'text-emerald-600':'text-gray-400'}">${isSupabaseReady?'☁️ Supabase متزامن':'📴 محلي'}</span></div><div class="text-xs">مرحبا ${cur.n} <button onclick="logout()" class="mr-2 bg-gray-100 px-3 py-1 rounded-lg">خروج</button></div></div><div class="max-w-6xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto"><button onclick="go('dash')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='dash'?'bg-red-600 text-white':'bg-gray-100'}">الرئيسية</button><button onclick="go('inv')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='inv'?'bg-red-600 text-white':'bg-gray-100'}">المخزن</button><button onclick="go('shop')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='shop'?'bg-red-600 text-white':'bg-gray-100'}">نقطة البيع</button><button onclick="go('sales')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='sales'?'bg-red-600 text-white':'bg-gray-100'}">المبيعات</button><button onclick="go('return')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='return'?'bg-red-600 text-white':'bg-gray-100'}">↩️ المرتجع</button><button onclick="go('users')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='users'?'bg-red-600 text-white':'bg-gray-100'}">المستخدمين</button></div></div>`;
  let content='';
  if(page==='dash'){
   let totalVal=DB.inv.reduce((s,x)=>s+x.qty*x.avgBuy,0);
   let totalQty=DB.inv.reduce((s,x)=>s+x.qty,0);
-  let todaySales=DB.sales.filter(x=>x.date===today());
-  content=`<div class="max-w-6xl mx-auto p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-   <div class="bg-white rounded-2xl p-4 text-center shadow-sm"><div class="text-xs text-gray-400">قيمة المخزن</div><div class="font-black text-lg">${totalVal.toLocaleString()} ج</div></div>
-   <div class="bg-white rounded-2xl p-4 text-center shadow-sm"><div class="text-xs text-gray-400">عدد القطع</div><div class="font-black text-lg">${totalQty}</div></div>
-   <div class="bg-white rounded-2xl p-4 text-center shadow-sm"><div class="text-xs text-gray-400">مبيعات اليوم</div><div class="font-black text-lg">${todaySales.length}</div></div>
-   <div class="bg-white rounded-2xl p-4 text-center shadow-sm"><div class="text-xs text-gray-400">الصيانة</div><div class="font-black text-lg">${DB.repairs.filter(r=>r.status!=='تم التسليم').length}</div></div>
-  </div>`;
+  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-gradient-to-r from-emerald-600 to-black text-white rounded-3xl p-5 mb-4 text-center"><div class="font-black">☁️ Supabase Cloud متزامن</div><div class="text-xs opacity-80">أي مبيعة على الكمبيوتر تظهر على الموبايل فوراً - فواتير متسلسلة</div></div><div class="grid grid-cols-2 md:grid-cols-4 gap-3"><div class="bg-white rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">قيمة المخزن</div><div class="font-black text-lg">${totalVal.toLocaleString()} ج</div></div><div class="bg-white rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">القطع</div><div class="font-black text-lg">${totalQty}</div></div><div class="bg-white rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">مبيعات اليوم</div><div class="font-black text-lg">${DB.sales.filter(x=>x.date===today()).length}</div></div><div class="bg-white rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">الفاتورة القادمة</div><div class="font-black text-lg">#${invCounter+1}</div></div></div></div>`;
  }
  else if(page==='inv'){
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-5 shadow-sm">
-    <div class="flex justify-between items-center mb-4"><h3 class="font-black text-center w-full">المخزن</h3></div>
-    <div class="border-2 border-dashed rounded-2xl p-4 grid grid-cols-2 gap-2 mb-4">
-     <input id="pn" placeholder="اسم الصنف *" class="border rounded-xl px-3 py-2 text-center">
-     <select id="pc" class="border rounded-xl px-3 py-2 text-center">${DB.cats.map(c=>`<option value="${c.id}">${c.n}</option>`).join('')}</select>
-     <input id="psub" placeholder="النوع/الموديل" class="border rounded-xl px-3 py-2 text-center">
-     <div class="flex gap-1"><input id="pimei" placeholder="IMEI / باركود *" class="flex-1 border rounded-xl px-3 py-2 text-center"><button onclick="startScan('pimei')" class="bg-gray-900 text-white px-3 rounded-xl text-xs">📷</button></div>
-     <input id="pq" type="number" placeholder="الكمية *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="pbuy" type="number" placeholder="سعر الشراء للوحدة *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="psup" placeholder="اسم المورد *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="pinv" placeholder="رقم الفاتورة" class="border rounded-xl px-3 py-2 text-center">
-     <input id="psell" type="number" placeholder="سعر البيع المقترح" class="col-span-2 border rounded-xl px-3 py-2 text-center">
-     <button onclick="addProduct()" class="col-span-2 bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">إضافة للمخزن</button>
-    </div>
-    <div class="overflow-x-auto"><table class="w-full text-sm text-center"><tr class="text-xs text-gray-400 border-b"><td class="py-2">الصنف</td><td>الباركود</td><td>الكمية</td>${has('cost')?'<td>الشراء</td>':''}<td>إجراءات</td></tr>
-    ${DB.inv.map(i=>`<tr class="border-b"><td class="py-2 font-bold">${i.name}<div class="text-[10px] text-gray-400">${i.sub} - ${i.lastSupplier}</div></td><td class="text-xs">${i.imei}</td><td>${i.qty}</td>${has('cost')?`<td>${i.avgBuy.toFixed(0)}</td>`:''}<td><button onclick="productHistory('${i.id}')" class="bg-gray-100 px-2 py-1 rounded-lg text-xs">📜 سجل</button> ${has('invDel')?`<button onclick="if(confirm('مسح؟')){DB.inv=DB.inv.filter(x=>x.id!=='${i.id}');save();render()}" class="text-red-500 text-xs">🗑️</button>`:''}</td></tr>`).join('')}</table></div>
-   </div>
-  </div>`;
+  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-white rounded-3xl p-5 shadow-sm"><h3 class="font-black text-center mb-4">المخزن Cloud</h3><div class="border-2 border-dashed border-red-200 rounded-2xl p-4 grid grid-cols-2 gap-2 mb-4"><input id="pn" placeholder="اسم الصنف" class="border rounded-xl px-3 py-2 text-center"><input id="pimei" placeholder="باركود *" class="border rounded-xl px-3 py-2 text-center"><input id="pq" type="number" placeholder="الكمية" class="border rounded-xl px-3 py-2 text-center"><input id="pbuy" type="number" placeholder="سعر الشراء" class="border rounded-xl px-3 py-2 text-center"><input id="psup" placeholder="المورد" class="border rounded-xl px-3 py-2 text-center"><input id="psell" type="number" placeholder="سعر البيع" class="border rounded-xl px-3 py-2 text-center"><button onclick="addProduct()" class="col-span-2 bg-red-600 text-white py-3 rounded-xl font-black">إضافة - Cloud</button></div><div class="overflow-x-auto"><table class="w-full text-sm text-center"><tr class="text-xs text-gray-400 border-b"><td>الصنف</td><td>الباركود</td><td>الكمية</td></tr>${DB.inv.map(i=>`<tr class="border-b"><td>${i.name}</td><td class="text-xs">${i.imei}</td><td>${i.qty}</td></tr>`).join('')}</table></div></div></div>`;
  }
  else if(page==='shop'){
-  let list=DB.inv.filter(i=>{
-   if(filterCat!=='all' && i.catId!==filterCat) return false;
-   if(searchQ){let q=searchQ.toLowerCase(); return i.name.toLowerCase().includes(q)||i.imei.toLowerCase().includes(q)||i.sub.toLowerCase().includes(q)}
-   return true;
-  });
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-4 shadow-sm mb-3">
-    <div class="flex gap-2">
-     <input id="searchInput" value="${searchQ}" oninput="searchQ=this.value;render()" onkeydown="if(event.key==='Enter'){let f=DB.inv.find(x=>x.imei===this.value); if(f){sellModal(f.id)}}" placeholder="بحث بالاسم أو الباركود" class="flex-1 border rounded-xl px-3 py-3 text-center">
-     <button onclick="startScan('searchInput')" class="bg-gradient-to-r from-red-600 to-black text-white px-4 rounded-xl text-sm font-bold">📷 مسح باركود</button>
-    </div>
-    <div class="flex gap-2 overflow-x-auto mt-3 pb-1">
-     <button onclick="filterCat='all';render()" class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold ${filterCat==='all'?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">الكل</button>
-     ${DB.cats.map(c=>`<button onclick="filterCat='${c.id}';render()" class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold ${filterCat===c.id?'bg-gradient-to-r from-red-600 to-black text-white':'bg-gray-100'}">${c.n}</button>`).join('')}
-    </div>
-   </div>
-   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-    ${list.map(i=>`<div class="bg-white rounded-2xl p-3 text-center shadow-sm">
-     <div class="text-3xl">${i.img}</div><div class="font-bold text-sm mt-1">${i.name}</div><div class="text-[11px] text-gray-400">${i.sub} - متاح ${i.qty}</div>
-     <button ${i.qty<=0?'disabled':''} onclick="sellModal('${i.id}')" class="mt-2 w-full py-2 rounded-xl text-sm font-black ${i.qty<=0?'bg-gray-200':'bg-gradient-to-r from-red-600 to-black text-white'}">${i.qty<=0?'خلص':'بيع'}</button>
-    </div>`).join('')}
-   </div>
-  </div>`;
+  let list=DB.inv.filter(i=>{ if(searchQ){let q=searchQ.toLowerCase(); return i.name.toLowerCase().includes(q)||i.imei.toLowerCase().includes(q)} return true; });
+  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-white rounded-3xl p-4 shadow-sm mb-3"><div class="flex gap-2"><input id="searchInput" value="${searchQ}" oninput="searchQ=this.value;render()" placeholder="بحث باركود - جهاز أو كاميرا" class="flex-1 border rounded-xl px-3 py-3 text-center"><button onclick="startScan('searchInput')" class="bg-red-600 text-white px-4 rounded-xl font-bold">📷 مسح</button></div></div><div class="grid grid-cols-2 md:grid-cols-4 gap-3">${list.map(i=>`<div class="bg-white rounded-2xl p-3 text-center shadow-sm"><div class="font-bold text-sm">${i.name}</div><div class="text-[11px] text-gray-400">متاح ${i.qty}</div><button onclick="sellModal('${i.id}')" class="mt-2 w-full py-2 rounded-xl text-sm font-black bg-red-600 text-white">بيع #${invCounter+1}</button></div>`).join('')}</div></div>`;
  }
  else if(page==='sales'){
-  let rows=filteredSales();
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-4 shadow-sm">
-    <h3 class="font-black text-center mb-3">المبيعات</h3>
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-     <input id="sq" value="${salesFilter.q}" oninput="salesFilter.q=this.value" placeholder="بحث منتج أو عميل" class="border rounded-xl px-3 py-2 text-center text-sm">
-     <select id="scat" onchange="salesFilter.cat=this.value" class="border rounded-xl px-3 py-2 text-center text-sm"><option value="all">كل الفئات</option>${DB.cats.map(c=>`<option value="${c.id}" ${salesFilter.cat===c.id?'selected':''}>${c.n}</option>`).join('')}</select>
-     <input type="date" value="${salesFilter.from}" onchange="salesFilter.from=this.value" class="border rounded-xl px-3 py-2 text-center text-sm">
-     <input type="date" value="${salesFilter.to}" onchange="salesFilter.to=this.value" class="border rounded-xl px-3 py-2 text-center text-sm">
-     <button onclick="render()" class="bg-gradient-to-r from-red-600 to-black text-white rounded-xl py-2 text-sm font-bold">بحث</button>
-    </div>
-    <div class="flex gap-2 mb-3"><button onclick="exportSales()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold">📊 تصدير Excel</button></div>
-    <div class="overflow-x-auto"><table class="w-full text-xs text-center"><tr class="text-[11px] text-gray-400 border-b"><td class="py-2">التاريخ</td><td>الصنف</td><td>العميل</td><td>البيع</td><td>الربح</td><td>إيصال</td></tr>
-    ${rows.map(s=>`<tr class="border-b"><td>${s.date}</td><td>${s.name}</td><td>${s.client}</td><td>${s.sellPrice}</td><td class="text-emerald-600">${s.profit.toFixed(0)}</td><td><button onclick='showReceipt(DB.sales.find(x=>x.id==="${s.id}"))' class="bg-gray-100 px-2 py-1 rounded-lg">عرض</button></td></tr>`).join('')}</table></div>
-   </div>
-  </div>`;
- }
- else if(page==='rep'){
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-5 shadow-sm">
-    <h3 class="font-black text-center mb-4">قسم الصيانة</h3>
-    <div class="border-2 border-dashed rounded-2xl p-4 grid grid-cols-2 gap-2 mb-4">
-     <input id="rc" placeholder="اسم العميل *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="rp" placeholder="رقم التليفون *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="rd" placeholder="نوع الجهاز *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="rf" placeholder="نوع العطل *" class="border rounded-xl px-3 py-2 text-center">
-     <input id="rcost" type="number" placeholder="التكلفة" class="col-span-2 border rounded-xl px-3 py-2 text-center">
-     <button onclick="addRepair()" class="col-span-2 bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">استلام جهاز</button>
-    </div>
-    <div class="space-y-2">${DB.repairs.map(r=>`<div class="border rounded-2xl p-3 text-sm text-center"><b>${r.client}</b> - ${r.device} - ${r.fault}<div class="text-xs text-gray-400">${r.phone} - ${r.status}</div><div class="flex gap-2 justify-center mt-2"><button onclick="updateRep('${r.id}')" class="bg-gray-100 px-3 py-1 rounded-lg text-xs">تعديل حالة</button><button onclick="delRep('${r.id}')" class="text-red-500 text-xs">مسح</button></div></div>`).join('')||'<div class="text-center text-gray-400 py-10">لا يوجد</div>'}</div>
-   </div>
-  </div>`;
+  let rows=DB.sales.slice().reverse();
+  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-white rounded-3xl p-4 shadow-sm"><h3 class="font-black text-center mb-3">المبيعات - فواتير متسلسلة #</h3><div class="overflow-x-auto"><table class="w-full text-xs text-center"><tr class="text-[11px] text-gray-400 border-b"><td>رقم الفاتورة</td><td>الصنف</td><td>العميل</td><td>السعر</td></tr>${rows.map(s=>`<tr class="border-b"><td class="font-bold text-emerald-600">#${s.invoiceNo}</td><td>${s.name}</td><td>${s.client}</td><td>${s.sellPrice}</td></tr>`).join('')}</table></div></div></div>`;
  }
  else if(page==='return'){
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-5 shadow-sm">
-    <h3 class="font-black text-center mb-4">↩️ المرتجعات - بحث بالباركود</h3>
-    <div class="bg-red-50 border-2 border-dashed border-red-200 rounded-2xl p-4 mb-4">
-     <div class="flex gap-2">
-      <input id="returnInput" placeholder="امسح الباركود أو اكتب IMEI" class="flex-1 border rounded-xl px-3 py-3 text-center font-bold" onkeydown="if(event.key==='Enter'){showReturn(this.value)}">
-      <button onclick="let v=document.getElementById('returnInput').value; if(v) showReturn(v)" class="bg-red-600 text-white px-6 rounded-xl font-black">بحث</button>
-      <button onclick="startScan('returnInput')" class="bg-black text-white px-4 rounded-xl">📷 مسح</button>
-     </div>
-     <div class="text-xs text-center text-gray-500 mt-2">وجه جهاز الباركود للمنتج أو اكتب الكود واضغط Enter</div>
-    </div>
-    <div class="bg-gray-50 rounded-2xl p-4 text-center text-sm text-gray-600">
-     <div class="text-3xl mb-2">📦</div>
-     <div>امسح باركود المنتج المرتجع لعرض:</div>
-     <div class="mt-2 text-xs">• نوع المنتج وتاريخ الشراء • سعر الشراء • اتباع بكام • اسم المورد • سجل كامل</div>
-    </div>
-   </div>
-  </div>`;
+  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-white rounded-3xl p-5 shadow-sm"><h3 class="font-black text-center mb-4">↩️ المرتجع - باركود أو فاتورة</h3><div class="bg-red-50 border-2 border-dashed border-red-200 rounded-2xl p-4"><div class="flex gap-2"><input id="returnInput" placeholder="باركود - جهاز أو كاميرا" class="flex-1 border rounded-xl px-3 py-3 text-center font-bold"><button onclick="let v=document.getElementById('returnInput').value; if(v) showReturn(v)" class="bg-red-600 text-white px-4 rounded-xl font-black">بحث</button><button onclick="startScan('returnInput')" class="bg-black text-white px-3 rounded-xl">📷</button></div><div class="flex gap-2 mt-2"><input id="returnInv" placeholder="رقم الفاتورة المتسلسل" class="flex-1 border rounded-xl px-3 py-3 text-center"><button onclick="showReturnByInvoice(document.getElementById('returnInv').value)" class="bg-emerald-600 text-white px-4 rounded-xl">فاتورة #</button></div></div></div></div>`;
  }
-
- else if(page==='jard'){
-  let totalVal=DB.inv.reduce((s,x)=>s+x.qty*x.avgBuy,0);
-  let totalQty=DB.inv.reduce((s,x)=>s+x.qty,0);
-  let jardHistory=JSON.parse(localStorage.getItem('neo_jard')||'[]');
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-5 shadow-sm">
-    <h3 class="font-black text-center mb-4">📦 الجرد الشهري والسنوي</h3>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-     <div class="bg-gray-50 rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">إجمالي القطع حاليا</div><div class="font-black text-lg">${totalQty}</div></div>
-     <div class="bg-gray-50 rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">قيمة المخزن</div><div class="font-black text-lg">${totalVal.toLocaleString()} ج</div></div>
-     <div class="bg-gray-50 rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">عدد الأصناف</div><div class="font-black text-lg">${DB.inv.length}</div></div>
-     <div class="bg-emerald-50 rounded-2xl p-4 text-center"><div class="text-xs text-gray-400">آخر جرد</div><div class="font-black text-sm">${jardHistory.length?jardHistory[jardHistory.length-1].date:'لم يتم'}</div></div>
-    </div>
-    <div class="flex gap-2 justify-center mb-4 flex-wrap">
-     <button onclick="doJard('شهري')" class="bg-gradient-to-r from-red-600 to-black text-white px-6 py-3 rounded-xl font-black">📦 عمل جرد شهري</button>
-     <button onclick="doJard('سنوي')" class="bg-gray-900 text-white px-6 py-3 rounded-xl font-black">📅 عمل جرد سنوي</button>
-     <button onclick="exportJard()" class="bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold">📊 تصدير Excel</button>
-    </div>
-    <div class="overflow-x-auto"><table class="w-full text-xs text-center"><tr class="text-[11px] text-gray-400 border-b"><td class="py-2">التاريخ</td><td>النوع</td><td>القطع</td><td>القيمة</td><td>بواسطة</td></tr>
-    ${jardHistory.map(j=>`<tr class="border-b"><td>${j.date} ${j.time}</td><td>${j.type}</td><td>${j.qty}</td><td>${j.value.toLocaleString()} ج</td><td>${j.by}</td></tr>`).join('')||'<tr><td colspan=5 class="py-10 text-gray-400">لا يوجد جرد سابق</td></tr>'}</table></div>
-    <div class="mt-6 border-t pt-4">
-     <div class="font-bold text-center mb-2">تفاصيل الجرد الحالي</div>
-     <div class="overflow-x-auto"><table class="w-full text-xs text-center"><tr class="text-[11px] text-gray-400 border-b"><td>الصنف</td><td>الباركود</td><td>الكمية</td><td>متوسط الشراء</td><td>القيمة</td></tr>
-     ${DB.inv.map(i=>`<tr class="border-b"><td>${i.name}</td><td>${i.imei}</td><td>${i.qty}</td><td>${i.avgBuy.toFixed(0)}</td><td>${(i.qty*i.avgBuy).toLocaleString()}</td></tr>`).join('')}</table></div>
-    </div>
-   </div>
-  </div>`;
- }
-
  else if(page==='users'){
-  content=`<div class="max-w-6xl mx-auto p-4">
-   <div class="bg-white rounded-3xl p-5 shadow-sm">
-    <h3 class="font-black text-center mb-4">المستخدمين والصلاحيات</h3><div class="flex gap-2 justify-center mb-4"><button onclick="uploadLogo()" class="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold">🖼️ رفع لوجو للريسيت</button><button onclick="removeLogo()" class="bg-gray-100 px-4 py-2 rounded-xl text-sm">🗑️ حذف اللوجو</button></div><div class="text-center mb-3">${logoData?`<img src="${logoData}" class="mx-auto max-h-20 border rounded-xl">`:`<div class="text-xs text-gray-400">لم يتم رفع لوجو - سيظهر Neomobile فقط</div>`}</div>
-    <div class="border rounded-2xl p-4 mb-4">
-     <div class="font-bold text-center mb-3">إضافة مستخدم جديد</div>
-     <div class="grid grid-cols-2 gap-2">
-      <input id="un" placeholder="الاسم الكامل" class="border rounded-xl px-3 py-2 text-center">
-      <select id="ur" class="border rounded-xl px-3 py-2 text-center"><option value="sales">كاشير</option><option value="store">مخزن</option><option value="maintenance">صيانة</option><option value="admin">مدير عام</option></select>
-      <input id="uu" placeholder="اسم المستخدم" class="border rounded-xl px-3 py-2 text-center">
-      <input id="up" placeholder="كلمة المرور" class="border rounded-xl px-3 py-2 text-center">
-     </div>
-     <div class="mt-3">
-      <div class="text-xs font-bold text-center mb-2">الصلاحيات:</div>
-      <div class="grid grid-cols-2 gap-2 text-xs">
-       ${[
-         ['dash','لوحة التحكم الرئيسية'],
-         ['invView','عرض المخزن'],
-         ['invAdd','إضافة للمخزن'],
-         ['invDel','مسح من المخزن'],
-         ['cost','عرض سعر الشراء'],
-         ['priceEdit','تعديل سعر البيع'],
-         ['catM','إدارة الفئات'],
-         ['shop','نقطة البيع'],
-         ['salesView','عرض المبيعات'],
-         ['salesDel','مسح المبيعات'],
-         ['repView','عرض الصيانة'],
-         ['repM','إدارة الصيانة'],
-         ['usersM','إدارة المستخدمين'],
-         ['download','تحميل النسخة'],
-         ['loss','السماح بالبيع بخسارة'],
-         ['jard','الجرد الشهري والسنوي']
-       ].map(([k,l])=>`<label class="flex items-center gap-2 border rounded-xl px-3 py-2 justify-center text-center"><input type="checkbox" data-perm="${k}" class="permChk" checked> ${l}</label>`).join('')}
-      </div>
-     </div>
-     <button onclick="addUser()" class="w-full mt-3 bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">إضافة مستخدم</button>
-    </div>
-    <div class="space-y-2">
-     ${DB.users.map(u=>`<div class="border rounded-2xl p-3 flex justify-between items-center text-center">
-      <div><div class="font-bold">${u.n}</div><div class="text-xs text-gray-400">${u.u} - ${u.role} - ${u.active?'نشط':'موقف'}</div></div>
-      <div class="flex gap-1">
-       <button onclick="editPerms('${u.id}')" class="bg-gray-100 px-2 py-1 rounded-lg text-xs">✏️ صلاحيات</button>
-       <button onclick="changePass('${u.id}')" class="bg-gray-100 px-2 py-1 rounded-lg text-xs">🔑 باسورد</button>
-       <button onclick="deleteUser('${u.id}')" class="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-xs">🗑️ مسح</button>
-      </div>
-     </div>`).join('')}
-    </div>
-   </div>
-  </div>`;
+  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-white rounded-3xl p-5 shadow-sm"><h3 class="font-black text-center mb-4">الإعدادات - Cloud</h3><div class="flex gap-2 justify-center mb-4 flex-wrap"><button onclick="uploadLogo()" class="bg-red-600 text-white px-4 py-2 rounded-xl text-sm">🖼️ رفع لوجو</button><button onclick="removeLogo()" class="bg-gray-100 px-4 py-2 rounded-xl text-sm">حذف اللوجو</button></div><div class="bg-blue-50 border rounded-2xl p-4 text-xs"><div class="font-bold">إعداد Supabase (مرة واحدة):</div><div class="mt-2">1- ادخل supabase.com → New Project</div><div>2- من SQL Editor نفذ:</div><div class="bg-black text-white p-2 rounded-lg mt-1 text-[10px] dir-ltr" style="direction:ltr">create table neomobile_data (id int primary key, data jsonb, counter int, jard jsonb, jard_by_item jsonb, logo text, updated_at timestamp, updated_by text);<br>alter table neomobile_data enable row level security;<br>create policy "Allow all" on neomobile_data for all using (true) with check (true);</div><div class="mt-2">3- من Settings → API انسخ URL و anon key وحطهم في الكود فوق</div><div class="mt-2">4- فعل Realtime: Database → Realtime → فعل الجدول neomobile_data</div></div></div></div>`;
  }
- else if(page==='cats'){
-  content=`<div class="max-w-6xl mx-auto p-4"><div class="bg-white rounded-3xl p-5 shadow-sm text-center"><h3 class="font-black mb-4">الفئات</h3><div class="flex gap-2 justify-center mb-4"><input id="cn" placeholder="اسم الفئة" class="border rounded-xl px-3 py-2 text-center"><button onclick="addCat()" class="bg-gradient-to-r from-red-600 to-black text-white px-4 py-2 rounded-xl">إضافة</button></div><div class="space-y-2">${DB.cats.map(c=>`<div class="border rounded-xl p-3 flex justify-between"><span>${c.icon} ${c.n}</span><button onclick="delCat('${c.id}')" class="text-red-500 text-xs">مسح</button></div>`).join('')}</div></div></div>`;
- }
- app.innerHTML=menu+content+toast;
+ app.innerHTML=menu+content+`<div id="toast" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-full text-sm z-50"></div><div id="cameraScanWrap" class="hidden fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4"><div class="bg-white rounded-3xl p-5 w-full max-w-md text-center"><div class="font-black text-lg mb-2">📷 مسح بالكاميرا</div><div id="reader" class="w-full rounded-2xl overflow-hidden border-2 border-red-200"></div><div class="flex gap-2 mt-4"><button onclick="closeCameraScan()" class="flex-1 bg-gray-100 py-3 rounded-xl">إغلاق</button></div></div></div>`;
 }
 
-function addCat(){let n=document.getElementById('cn').value.trim(); if(!n)return; DB.cats.push({id:uid(),n,icon:'📱',subs:[]}); save(); render()}
-function delCat(id){if(!confirm('مسح الفئة؟'))return; DB.cats=DB.cats.filter(x=>x.id!==id); save(); render()}
-function addRepair(){
- let c=document.getElementById('rc').value.trim(), p=document.getElementById('rp').value.trim(), d=document.getElementById('rd').value.trim(), f=document.getElementById('rf').value.trim(), cost=document.getElementById('rcost').value;
- if(!c||!p||!d||!f){alert('اكمل البيانات');return}
- DB.repairs.push({id:uid(),client:c,phone:p,device:d,fault:f,cost:cost||0,status:'قيد الصيانة',date:today()}); save(); render();
-}
-function updateRep(id){let s=prompt('الحالة الجديدة: قيد الصيانة، تم الإصلاح، تم التسليم'); if(!s)return; let r=DB.repairs.find(x=>x.id===id); r.status=s; save(); render()}
-function delRep(id){if(!confirm('مسح؟'))return; DB.repairs=DB.repairs.filter(x=>x.id!==id); save(); render()}
+(async()=>{
+ if(isSupabaseReady){
+  const cloudData = await loadFromCloud();
+  if(cloudData && cloudData.data && Object.keys(cloudData.data).length>0){
+   // If local empty, auto load cloud
+   if(DB.inv.length===0 && cloudData.data.inv && cloudData.data.inv.length>0){
+    if(confirm('تحميل البيانات من السحابة Supabase؟')){
+     DB=cloudData.data;
+     invCounter=cloudData.counter||invCounter;
+     if(cloudData.jard) localStorage.setItem('neo_jard', JSON.stringify(cloudData.jard));
+     if(cloudData.jard_by_item) localStorage.setItem('neo_jard_by_item', JSON.stringify(cloudData.jard_by_item));
+     if(cloudData.logo){ localStorage.setItem(LOGO_KEY, cloudData.logo); logoData=cloudData.logo; }
+     localStorage.setItem(KEY, JSON.stringify(DB));
+     localStorage.setItem('neo_inv_counter', invCounter.toString());
+    }
+   }
+  }
+  setupRealtime();
+ }
+ render();
+})();
 
 render();
 </script>
