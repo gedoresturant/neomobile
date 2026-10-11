@@ -38,13 +38,17 @@ function calcSellFromMargin(){ let buy=parseFloat(document.getElementById('pbuy'
 function addProduct(){
  let name=document.getElementById('pn').value.trim(); let cat=document.getElementById('pc').value; let sub=document.getElementById('psub').value.trim()||'عام'; let imei=document.getElementById('pimei').value.trim(); let qty=parseInt(document.getElementById('pq').value)||0; let unitCost=parseFloat(document.getElementById('pbuy').value)||0; let margin=parseFloat(document.getElementById('pmargin').value)||0; let defSell=parseFloat(document.getElementById('psell').value)||0; let supplier=document.getElementById('psup').value.trim(); let invNo=document.getElementById('pinv').value.trim();
  if(!name||!imei||qty<=0||unitCost<=0||!supplier){alert('اكمل البيانات: اسم، باركود، كمية، شراء، مورد');return}
- let existing=DB.inv.find(x=>x.imei===imei);
+ // الباركود لا يكفي وحده لتحديد أن الصنف هو نفس النوع؛ نتحقق من الاسم والقسم والنوع أيضًا.
+ let existing=DB.inv.find(x=>String(x.imei||'').trim()===imei);
  if(existing){
-  let oldTotal=existing.qty*existing.avgBuy; let newTotal=qty*unitCost; let totalQty=existing.qty+qty; let newAvg=(oldTotal+newTotal)/totalQty;
+  const norm=v=>String(v??'').trim().replace(/\s+/g,' ').toLocaleLowerCase();
+  const sameProduct=norm(existing.name)===norm(name)&&norm(existing.sub||'عام')===norm(sub)&&String(existing.catId||'')===String(cat||'');
+  if(!sameProduct){alert('⚠️ الباركود مستخدم بالفعل لصنف مختلف. لم يتم دمج الكمية أو حساب المتوسط. راجع اسم الصنف والنوع والقسم أو استخدم باركودًا صحيحًا.');return;}
+  let oldTotal=(Number(existing.qty)||0)*(Number(existing.avgBuy)||0); let newTotal=qty*unitCost; let totalQty=(Number(existing.qty)||0)+qty; let newAvg=(oldTotal+newTotal)/totalQty;
   existing.qty=totalQty; existing.avgBuy=newAvg; existing.totalCost=totalQty*newAvg; existing.lastSupplier=supplier;
   if(defSell>0) existing.defaultSell=defSell; else if(margin>0) existing.defaultSell=Math.round(newAvg*(1+margin/100));
-  DB.purchases.push({id:uid(),productId:existing.id,name,imei,qty,unitCost,totalCost:newTotal,avgAfter:newAvg,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
-  alert('✅ تم التحديث\nالمتوسط الجديد: '+newAvg.toFixed(0)+' ج');
+  DB.purchases.push({id:uid(),productId:existing.id,name:existing.name,imei,qty,unitCost,totalCost:newTotal,avgAfter:newAvg,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
+  alert('✅ تم تحديث نفس الصنف والنوع\nالمتوسط الجديد: '+newAvg.toFixed(2)+' ج');
  }else{
   let id=uid(); let sellPrice=defSell>0?defSell:(margin>0?Math.round(unitCost*(1+margin/100)):Math.round(unitCost*1.2));
   DB.inv.push({id,name,catId:cat,sub,imei,qty,avgBuy:unitCost,totalCost:qty*unitCost,defaultSell:sellPrice,margin,img:'📱',lastSupplier:supplier});
