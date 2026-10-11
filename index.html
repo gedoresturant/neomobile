@@ -7,10 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<style>*{font-family:'Cairo',sans-serif} body{background:#f8fafc} @media print{body *{visibility:hidden} #receiptWrap,#receiptWrap *{visibility:visible} #receiptWrap{position:fixed;top:0;right:0;width:80mm}}</style>
+<style>*{font-family:'Cairo',sans-serif} body{background:#f8fafc;overflow-x:hidden} @media(max-width:640px){.mobile-main-nav{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible!important}.mobile-main-nav button{white-space:normal!important;padding:9px 5px!important;font-size:11px!important;min-width:0}.shop-search-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px!important}.shop-search-row input{min-width:0!important;width:100%}.shop-search-row button{padding-left:12px!important;padding-right:12px!important}.shop-category-select{width:100%!important;min-width:0!important;max-width:100%!important}} @media print{body *{visibility:hidden} #receiptWrap,#receiptWrap *{visibility:visible} #receiptWrap{position:fixed;top:0;right:0;width:80mm}}</style>
 </head>
 <body>
 <div id="app"></div>
+<div id="cloudSyncStatus" class="fixed bottom-2 left-2 z-[200] text-[11px] font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800">☁️ جارٍ الاتصال بالسحابة…</div>
 <div id="receiptWrap" class="hidden fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4"><div id="receipt" class="bg-white border border-black w-[302px] max-w-[80mm] text-[12px] p-3 text-black"></div></div>
 <script>
 const SUPABASE_URL="https://dxxvxfvftrrwwkwcemcd.supabase.co";
@@ -26,7 +27,24 @@ let DB=JSON.parse(localStorage.getItem(KEY)||'null')||{
  users:[{id:'admin',u:'admin',p:'admin123',n:'المدير العام',role:'admin',perms:{dash:true,invView:true,invAdd:true,invDel:true,cost:true,priceEdit:true,catM:true,shop:true,salesView:true,salesDel:true,repView:true,repM:true,usersM:true,jard:true,return:true,loss:true},active:true}]
 };
 if(!Array.isArray(DB.returns)) DB.returns=[];
-function saveCloud(){ localStorage.setItem(KEY,JSON.stringify(DB)); localStorage.setItem('neo_counter_v16',invCounter.toString()); localStorage.setItem(LOGO_KEY,logoData||''); supabaseClient.from('neomobile_data').upsert({id:1,data:DB,counter:invCounter,logo:logoData,updated_at:new Date().toISOString(),updated_by:cur?cur.n:'system'}).then(()=>{}).catch(()=>{}); }
+let cloudSyncState='جارٍ الاتصال بالسحابة…';
+let cloudSaveQueue=Promise.resolve();
+function showCloudSyncState(message,isError=false){
+ cloudSyncState=message;
+ let el=document.getElementById('cloudSyncStatus');
+ if(el){el.textContent=(isError?'⚠️ ':'☁️ ')+message;el.className='text-[11px] font-bold px-3 py-1 rounded-full '+(isError?'bg-red-100 text-red-700':'bg-emerald-100 text-emerald-700');}
+}
+function saveCloud(){
+ localStorage.setItem(KEY,JSON.stringify(DB)); localStorage.setItem('neo_counter_v16',invCounter.toString()); localStorage.setItem(LOGO_KEY,logoData||'');
+ const payload={id:1,data:DB,counter:invCounter,logo:logoData,updated_at:new Date().toISOString(),updated_by:cur?cur.n:'system'};
+ cloudSaveQueue=cloudSaveQueue.then(async()=>{
+  showCloudSyncState('جاري حفظ البيانات…');
+  const {error}=await supabaseClient.from('neomobile_data').upsert(payload,{onConflict:'id'});
+  if(error){console.error('Supabase save failed:',error);showCloudSyncState('فشل حفظ السحابة: '+(error.message||'تحقق من الاتصال والصلاحيات'),true);return false;}
+  showCloudSyncState('تم حفظ البيانات على السحابة'); return true;
+ }).catch(err=>{console.error('Supabase save failed:',err);showCloudSyncState('تعذر الاتصال بالسحابة؛ البيانات محفوظة على هذا الجهاز فقط',true);return false;});
+ return cloudSaveQueue;
+}
 function save(){ saveCloud(); }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 // Global HTML escaper used by render branches such as device tracking.
@@ -277,7 +295,7 @@ function render(){
  if(focusId){try{caretStart=activeBefore.selectionStart;caretEnd=activeBefore.selectionEnd;}catch(e){}}
  let app=document.getElementById('app');
  if(!cur){app.innerHTML=`<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-900 via-red-700 to-black p-4"><div class="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl"><div class="w-16 h-16 bg-gradient-to-r from-red-600 to-black text-white rounded-2xl flex items-center justify-center font-black text-2xl mx-auto mb-3">N</div><div class="font-black text-2xl">Neomobile</div><input id="lu" placeholder="اسم المستخدم" class="w-full border rounded-xl px-3 py-3 mb-2 text-center"><input id="lp" type="password" placeholder="كلمة المرور" class="w-full border rounded-xl px-3 py-3 mb-2 text-center"><div id="le" class="text-red-500 text-xs mb-2"></div><button onclick="login()" class="w-full bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">دخول</button><div class="text-[10px] text-gray-400 mt-3"></div></div></div>`;return}
- let menu=`<div class="bg-white border-b sticky top-0 z-40"><div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2">${logoData?`<img src="${logoData}" class="h-8 rounded-lg">`:`<div class="w-9 h-9 bg-gradient-to-r from-red-600 to-black text-white rounded-xl flex items-center justify-center font-black">N</div>`}<b>Neomobile</b><span class="text-[10px] text-emerald-600">☁️ Cloud</span></div><div class="text-xs">مرحبا ${cur.n} <button onclick="logout()" class="mr-2 bg-gray-100 px-3 py-1 rounded-lg">خروج</button></div></div><div class="max-w-7xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
+ let menu=`<div class="bg-white border-b sticky top-0 z-40"><div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2">${logoData?`<img src="${logoData}" class="h-8 rounded-lg">`:`<div class="w-9 h-9 bg-gradient-to-r from-red-600 to-black text-white rounded-xl flex items-center justify-center font-black">N</div>`}<b>Neomobile</b><span class="text-[10px] text-emerald-600">☁️ Cloud</span></div><div class="text-xs">مرحبا ${cur.n} <button onclick="logout()" class="mr-2 bg-gray-100 px-3 py-1 rounded-lg">خروج</button></div></div><div class="max-w-7xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto mobile-main-nav">
   <button onclick="go('dash')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='dash'?'bg-black text-white':'bg-gray-100'}">الرئيسية</button>
   <button onclick="go('cats')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='cats'?'bg-red-600 text-white':'bg-gray-100'}">🏷️ الفئات</button>
   <button onclick="go('inv')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='inv'?'bg-red-600 text-white':'bg-gray-100'}">المخزن</button>
@@ -310,7 +328,7 @@ function render(){
  }
  else if(page==='shop'){
   let list=DB.inv.filter(i=>{if(window.invCatFilter!=='all'&&i.catId!==window.invCatFilter)return false; if(window.invSearchQ){let q=window.invSearchQ.toLowerCase(); return i.name.toLowerCase().includes(q)||i.imei.toLowerCase().includes(q)||(i.sub||'').toLowerCase().includes(q)} return true;});
-  content=`<div class="max-w-7xl mx-auto p-4"><div class="bg-white rounded-3xl p-4 shadow-sm mb-3"><div class="flex gap-2"><input id="shopSearch" value="${window.invSearchQ}" oninput="window.invSearchQ=this.value; render()" placeholder="🔍 بحث - امسح بالجهاز" class="flex-1 border-2 rounded-xl px-3 py-3 text-center font-bold"><button onclick="startScan('shopSearch')" class="bg-black text-white px-6 rounded-xl font-bold">📷 مسح</button><button onclick="exportToExcel('inv')" class="bg-emerald-600 text-white px-4 rounded-xl font-black">📊 Excel</button></div><div class="mt-3 grid grid-cols-1 gap-2"><label for="shopCategorySelect" class="text-sm font-black text-gray-700">📂 اختر الماركة / القسم</label><select id="shopCategorySelect" onchange="window.invCatFilter=this.value; render()" class="w-full min-w-0 border-2 border-gray-200 focus:border-red-500 rounded-xl px-3 py-3 bg-white text-sm font-bold"><option value="all" ${window.invCatFilter==='all'?'selected':''}>عرض كل المنتجات (${DB.inv.length})</option>${DB.cats.map(c=>`<option value="${c.id}" ${window.invCatFilter===c.id?'selected':''}>${c.n} (${DB.inv.filter(i=>i.catId===c.id).length})</option>`).join('')}</select><div class="text-xs text-gray-500">${window.invCatFilter==='all'?'كل الماركات معروضة':`القسم المختار: ${(DB.cats.find(c=>c.id===window.invCatFilter)||{}).n||'قسم'}`}</div></div></div><div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">${list.map(i=>`<div class="bg-white rounded-2xl p-3 text-center shadow-sm border"><div class="text-2xl">📱</div><div class="font-black text-sm mt-1">${i.name}</div><div class="text-[11px] text-gray-500">${i.sub} - متاح ${i.qty}</div><div class="text-xs font-black text-emerald-600">بيع: ${(i.defaultSell||0).toLocaleString()} ج</div><button ${i.qty<=0?'disabled':''} onclick="sellModal('${i.id}')" class="mt-2 w-full py-2 rounded-xl text-sm font-black ${i.qty<=0?'bg-gray-200':'bg-gradient-to-r from-red-600 to-black text-white'}">${i.qty<=0?'خلص':'بيع #${invCounter+1}'}</button></div>`).join('')}${list.length===0?'<div class="col-span-full text-center py-12 text-gray-400">لا يوجد منتجات</div>':''}</div></div>`;
+  content=`<div class="max-w-7xl mx-auto p-4"><div class="bg-white rounded-3xl p-4 shadow-sm mb-3"><div class="flex gap-2 shop-search-row"><input id="shopSearch" value="${window.invSearchQ}" oninput="window.invSearchQ=this.value; render()" placeholder="🔍 بحث - امسح بالجهاز" class="flex-1 border-2 rounded-xl px-3 py-3 text-center font-bold"><button onclick="startScan('shopSearch')" class="bg-black text-white px-6 rounded-xl font-bold">📷 مسح</button><button onclick="exportToExcel('inv')" class="bg-emerald-600 text-white px-4 rounded-xl font-black">📊 Excel</button></div><div class="mt-3 grid grid-cols-1 gap-2"><label for="shopCategorySelect" class="text-sm font-black text-gray-700">📂 اختر الماركة / القسم</label><select id="shopCategorySelect" onchange="window.invCatFilter=this.value; render()" class="shop-category-select w-full min-w-0 border-2 border-gray-200 focus:border-red-500 rounded-xl px-3 py-3 bg-white text-sm font-bold"><option value="all" ${window.invCatFilter==='all'?'selected':''}>عرض كل المنتجات (${DB.inv.length})</option>${DB.cats.map(c=>`<option value="${c.id}" ${window.invCatFilter===c.id?'selected':''}>${c.n} (${DB.inv.filter(i=>i.catId===c.id).length})</option>`).join('')}</select><div class="text-xs text-gray-500">${window.invCatFilter==='all'?'كل الماركات معروضة':`القسم المختار: ${(DB.cats.find(c=>c.id===window.invCatFilter)||{}).n||'قسم'}`}</div></div></div><div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">${list.map(i=>`<div class="bg-white rounded-2xl p-3 text-center shadow-sm border"><div class="text-2xl">📱</div><div class="font-black text-sm mt-1">${i.name}</div><div class="text-[11px] text-gray-500">${i.sub} - متاح ${i.qty}</div><div class="text-xs font-black text-emerald-600">بيع: ${(i.defaultSell||0).toLocaleString()} ج</div><button ${i.qty<=0?'disabled':''} onclick="sellModal('${i.id}')" class="mt-2 w-full py-2 rounded-xl text-sm font-black ${i.qty<=0?'bg-gray-200':'bg-gradient-to-r from-red-600 to-black text-white'}">${i.qty<=0?'خلص':'بيع #${invCounter+1}'}</button></div>`).join('')}${list.length===0?'<div class="col-span-full text-center py-12 text-gray-400">لا يوجد منتجات</div>':''}</div></div>`;
  }
  else if(page==='unitTrack'){
   const allRows=buildUnitTrackingRows();
@@ -354,9 +372,27 @@ app.innerHTML=menu+content+`<div id="cameraScanWrap" class="hidden fixed inset-0
  }
 }
 (async()=>{
- try{ let res=await supabaseClient.from('neomobile_data').select('*').eq('id',1).single(); if(res.data&&res.data.data&&DB.inv.length===0&&res.data.data.inv&&res.data.data.inv.length>0){ if(confirm('تحميل من السحابة؟')){DB=res.data.data; invCounter=res.data.counter||invCounter; if(res.data.logo){logoData=res.data.logo; localStorage.setItem(LOGO_KEY,logoData);} localStorage.setItem(KEY,JSON.stringify(DB)); } } }catch(e){}
- supabaseClient.channel('neomobile').on('postgres_changes',{event:'*',schema:'public',table:'neomobile_data',filter:'id=eq.1'},(payload)=>{ if(payload.new&&payload.new.data&&JSON.stringify(payload.new.data)!==JSON.stringify(DB)){ if(confirm('تحديث جديد من جهاز تاني - تحميل؟')){DB=payload.new.data; invCounter=payload.new.counter||invCounter; localStorage.setItem(KEY,JSON.stringify(DB)); render();} } }).subscribe();
  render();
+ try{
+  const {data:cloudRow,error}=await supabaseClient.from('neomobile_data').select('id,data,counter,logo,updated_at,updated_by').eq('id',1).maybeSingle();
+  if(error){console.error('Supabase load failed:',error);showCloudSyncState('فشل تحميل السحابة: '+(error.message||'تحقق من الصلاحيات'),true);}
+  else if(cloudRow&&cloudRow.data){
+   const localRaw=localStorage.getItem(KEY); const localDB=localRaw?JSON.parse(localRaw):null;
+   const cloudJSON=JSON.stringify(cloudRow.data); const localJSON=localDB?JSON.stringify(localDB):'';
+   if(!localDB || !Array.isArray(localDB.inv) || localDB.inv.length===0){
+    DB=cloudRow.data; invCounter=Number(cloudRow.counter)||invCounter; if(cloudRow.logo){logoData=cloudRow.logo;localStorage.setItem(LOGO_KEY,logoData);} localStorage.setItem(KEY,cloudJSON);localStorage.setItem('neo_counter_v16',String(invCounter));render();showCloudSyncState('تم تحميل بيانات السحابة');
+   } else if(localJSON!==cloudJSON){
+    const chooseCloud=confirm('تم العثور على بيانات محفوظة على السحابة. اضغط موافق لتحميل بيانات السحابة على هذا الجهاز، أو إلغاء للاحتفاظ بالبيانات المحلية الحالية.');
+    if(chooseCloud){DB=cloudRow.data;invCounter=Number(cloudRow.counter)||invCounter;if(cloudRow.logo){logoData=cloudRow.logo;localStorage.setItem(LOGO_KEY,logoData);}localStorage.setItem(KEY,cloudJSON);localStorage.setItem('neo_counter_v16',String(invCounter));render();showCloudSyncState('تم تحميل بيانات السحابة');}
+    else showCloudSyncState('تستخدم البيانات المحلية؛ لم يتم رفعها تلقائيًا',true);
+   } else showCloudSyncState('البيانات متزامنة مع السحابة');
+  } else showCloudSyncState('لا توجد بيانات سابقة على السحابة؛ أول حفظ سينشئها',true);
+ }catch(e){console.error('Supabase init failed:',e);showCloudSyncState('تعذر الاتصال بالسحابة؛ تحقق من الاتصال والصلاحيات',true);}
+ const channel=supabaseClient.channel('neomobile-live-sync').on('postgres_changes',{event:'*',schema:'public',table:'neomobile_data',filter:'id=eq.1'},(payload)=>{
+  if(payload.new&&payload.new.data&&JSON.stringify(payload.new.data)!==JSON.stringify(DB)){
+   if(confirm('تم اكتشاف تحديث من جهاز آخر. تحميل التحديث السحابي؟')){DB=payload.new.data;invCounter=Number(payload.new.counter)||invCounter;if(payload.new.logo){logoData=payload.new.logo;localStorage.setItem(LOGO_KEY,logoData);}localStorage.setItem(KEY,JSON.stringify(DB));localStorage.setItem('neo_counter_v16',String(invCounter));render();showCloudSyncState('تم تحديث البيانات من جهاز آخر');}
+  }
+ }).subscribe((status)=>{if(status==='SUBSCRIBED')showCloudSyncState('الاتصال المباشر بالسحابة نشط');else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')showCloudSyncState('التحديث المباشر غير متاح؛ افحص صلاحيات Realtime',true);});
 })();
 </script>
 </body>
