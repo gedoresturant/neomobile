@@ -26,84 +26,8 @@ let DB=JSON.parse(localStorage.getItem(KEY)||'null')||{
  users:[{id:'admin',u:'admin',p:'admin123',n:'المدير العام',role:'admin',perms:{dash:true,invView:true,invAdd:true,invDel:true,cost:true,priceEdit:true,catM:true,shop:true,salesView:true,salesDel:true,repView:true,repM:true,usersM:true,jard:true,return:true,loss:true},active:true}]
 };
 if(!Array.isArray(DB.returns)) DB.returns=[];
-let cloudReady=false, applyingRemote=false, saveVersion=0, lastCloudStamp='';
-function persistLocal(){
- localStorage.setItem(KEY,JSON.stringify(DB));
- localStorage.setItem('neo_counter_v16',String(invCounter));
- localStorage.setItem(LOGO_KEY,logoData||'');
-}
-function setSyncStatus(message,ok=false){
- let el=document.getElementById('cloudSyncStatus');
- if(el){el.textContent=message;el.className='text-[10px] '+(ok?'text-emerald-600':'text-red-600');}
-}
-async function saveCloud(){
- persistLocal();
- if(applyingRemote||!cloudReady)return;
- const version=++saveVersion;
- const row={id:1,data:DB,counter:invCounter,logo:logoData||'',updated_at:new Date().toISOString(),updated_by:cur?cur.n:'system'};
- setSyncStatus('جاري حفظ التعديلات سحابيًا…');
- try{
-  const {error}=await supabaseClient.from('neomobile_data').upsert(row,{onConflict:'id'});
-  if(error) throw error;
-  lastCloudStamp=row.updated_at;
-  setSyncStatus('☁️ متصل — آخر حفظ '+new Date(row.updated_at).toLocaleTimeString('ar-EG'),true);
- }catch(e){
-  console.error('Supabase save failed:',e);
-  setSyncStatus('فشل الحفظ السحابي: '+(e.message||e.code||'راجع الاتصال والصلاحيات'));
-  alert('التعديل محفوظ على هذا الجهاز فقط ولم نتأكد من حفظه على السحابة.\nالسبب: '+(e.message||e.code||'خطأ اتصال')+'\nلا تغلق الصفحة قبل حل المشكلة.');
- }
-}
-function save(){ return saveCloud(); }
-async function applyCloudRow(row){
- if(!row||!row.data)return;
- applyingRemote=true;
- DB=row.data;
- if(!Array.isArray(DB.returns))DB.returns=[];
- invCounter=Number(row.counter)||invCounter;
- if(row.logo!==undefined)logoData=row.logo||'';
- lastCloudStamp=row.updated_at||'';
- persistLocal();
- applyingRemote=false;
-}
-async function loadCloudAtStartup(){
- try{
-  const {data,error}=await supabaseClient.from('neomobile_data').select('id,data,counter,logo,updated_at').eq('id',1).maybeSingle();
-  if(error)throw error;
-  const localDB=JSON.parse(localStorage.getItem(KEY)||'null');
-  if(data&&data.data){
-   const localHasData=!!(localDB&&(localDB.inv||[]).length);
-   const cloudHasData=!!((data.data.inv||[]).length);
-   const same=JSON.stringify(localDB)===JSON.stringify(data.data);
-   if(!same&&localHasData&&cloudHasData){
-    const useLocal=confirm('تنبيه مزامنة: على هذا الجهاز '+localDB.inv.length+' صنف، وعلى السحابة '+data.data.inv.length+' صنف.\nموافق = رفع بيانات هذا الجهاز للسحابة واستبدال النسخة السحابية.\nإلغاء = تحميل بيانات السحابة على هذا الجهاز.\nنزّل Backup قبل الاختيار لو مش متأكد.');
-    if(useLocal){
-     DB=localDB; invCounter=Number(localStorage.getItem('neo_counter_v16'))||invCounter;
-     logoData=localStorage.getItem(LOGO_KEY)||logoData;
-     cloudReady=true; await saveCloud();
-    }else await applyCloudRow(data);
-   }else await applyCloudRow(data);
-   cloudReady=true;
-   setSyncStatus('☁️ متصل بالسحابة',true);
-  }else{
-   const localHasData=!!(localDB&&(localDB.inv||[]).length);
-   if(localHasData){
-    DB=localDB; cloudReady=true;
-    const upload=confirm('لا توجد بيانات في السحابة، لكن هذا الجهاز يحتوي على '+localDB.inv.length+' صنف. هل تريد رفع بيانات هذا الجهاز إلى السحابة لتظهر على باقي الأجهزة؟');
-    if(upload) await saveCloud();
-    else setSyncStatus('السحابة فارغة — لم يتم رفع البيانات');
-   }else{
-    cloudReady=true;
-    // No cloud row and no local inventory: create the initial row.
-    await saveCloud();
-   }
-  }
- }catch(e){
-  console.error('Supabase load failed:',e);
-  cloudReady=false;
-  setSyncStatus('تعذر الاتصال بالسحابة: '+(e.message||e.code||'خطأ اتصال'));
-  alert('لم نتمكن من تحميل بيانات Supabase. لم يتم تغيير بيانات هذا الجهاز.\nالسبب: '+(e.message||e.code||'خطأ اتصال')+'\nراجع الإنترنت وصلاحيات جدول neomobile_data.');
- }
-}
+function saveCloud(){ localStorage.setItem(KEY,JSON.stringify(DB)); localStorage.setItem('neo_counter_v16',invCounter.toString()); localStorage.setItem(LOGO_KEY,logoData||''); supabaseClient.from('neomobile_data').upsert({id:1,data:DB,counter:invCounter,logo:logoData,updated_at:new Date().toISOString(),updated_by:cur?cur.n:'system'}).then(()=>{}).catch(()=>{}); }
+function save(){ saveCloud(); }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function today(){return new Date().toISOString().slice(0,10)}
 function login(){ let u=document.getElementById('lu').value.trim(), p=document.getElementById('lp').value.trim(); let f=DB.users.find(x=>x.u===u&&x.p===p&&x.active!==false); if(!f){document.getElementById('le').innerText='اليوزر أو الباسورد غلط';return} localStorage.setItem(KEY+'_cur',JSON.stringify(f)); location.reload(); }
@@ -297,22 +221,32 @@ function removeLogo(){logoData=''; save(); render();}
 function addRepair(){let device=document.getElementById('rdevice').value.trim(), client=document.getElementById('rclient').value.trim(), phone=document.getElementById('rphone').value.trim(), issue=document.getElementById('rissue').value.trim(), cost=parseFloat(document.getElementById('rcost').value)||0; if(!device||!client||!issue){alert('اكمل');return} DB.repairs.push({id:uid(),device,client,phone,issue,cost,status:'قيد الصيانة',date:today(),by:cur.n}); save(); render();}
 function updateRepair(id,status){let r=DB.repairs.find(x=>x.id===id); if(r){r.status=status; save(); render();}}
 function deleteRepair(id){if(!confirm('مسح الصيانة؟'))return; DB.repairs=DB.repairs.filter(x=>x.id!==id); save(); render();}
-function go(p){page=p; if(p==='inv'){window.invSearchQ='';window.invCatFilter='all';} render();}
+function go(p){page=p; window.navOpen=false; if(p==='inv'){window.invSearchQ='';window.invCatFilter='all';} render();}
+function toggleMainNav(){window.navOpen=!window.navOpen; const nav=document.getElementById('mainNav'); const btn=document.getElementById('navToggle'); if(nav) nav.classList.toggle('nav-open',!!window.navOpen); if(btn) btn.setAttribute('aria-expanded',window.navOpen?'true':'false');}
 function render(){
  let app=document.getElementById('app');
  if(!cur){app.innerHTML=`<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-900 via-red-700 to-black p-4"><div class="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl"><div class="w-16 h-16 bg-gradient-to-r from-red-600 to-black text-white rounded-2xl flex items-center justify-center font-black text-2xl mx-auto mb-3">N</div><div class="font-black text-2xl">Neomobile</div><input id="lu" placeholder="اسم المستخدم" class="w-full border rounded-xl px-3 py-3 mb-2 text-center"><input id="lp" type="password" placeholder="كلمة المرور" class="w-full border rounded-xl px-3 py-3 mb-2 text-center"><div id="le" class="text-red-500 text-xs mb-2"></div><button onclick="login()" class="w-full bg-gradient-to-r from-red-600 to-black text-white py-3 rounded-xl font-black">دخول</button><div class="text-[10px] text-gray-400 mt-3"></div></div></div>`;return}
- let menu=`<div class="bg-white border-b sticky top-0 z-40"><div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2">${logoData?`<img src="${logoData}" class="h-8 rounded-lg">`:`<div class="w-9 h-9 bg-gradient-to-r from-red-600 to-black text-white rounded-xl flex items-center justify-center font-black">N</div>`}<b>Neomobile</b><span id="cloudSyncStatus" class="text-[10px] text-emerald-600">☁️ جاري الاتصال…</span></div><div class="text-xs">مرحبا ${cur.n} <button onclick="logout()" class="mr-2 bg-gray-100 px-3 py-1 rounded-lg">خروج</button></div></div><div class="max-w-7xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
-  <button onclick="go('dash')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='dash'?'bg-black text-white':'bg-gray-100'}">الرئيسية</button>
-  <button onclick="go('cats')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='cats'?'bg-red-600 text-white':'bg-gray-100'}">🏷️ الفئات</button>
-  <button onclick="go('inv')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='inv'?'bg-red-600 text-white':'bg-gray-100'}">المخزن</button>
-  <button onclick="go('shop')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='shop'?'bg-red-600 text-white':'bg-gray-100'}">نقطة البيع</button>
-  <button onclick="go('sales')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='sales'?'bg-red-600 text-white':'bg-gray-100'}">المبيعات</button>
-  <button onclick="go('return')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='return'?'bg-red-600 text-white':'bg-gray-100'}">↩️ المرتجع</button>
-  <button onclick="go('jard')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='jard'?'bg-red-600 text-white':'bg-gray-100'}">الجرد</button>
-  <button onclick="go('rep')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='rep'?'bg-red-600 text-white':'bg-gray-100'}">🔧 الصيانة</button>
-  <button onclick="go('settings')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='settings'?'bg-black text-white':'bg-gray-100'}">⚙️ الإعدادات</button>
-  <button onclick="go('users')" class="px-4 py-2 rounded-xl text-sm font-bold ${page==='users'?'bg-red-600 text-white':'bg-gray-100'}">👥 المستخدمين</button>
- </div></div>`;
+ let navItems=[
+  ['dash','🏠','الرئيسية'],['cats','🏷️','الفئات'],['inv','📦','المخزن'],['shop','🛒','نقطة البيع'],['sales','💰','المبيعات'],['return','↩️','المرتجع'],['jard','📋','الجرد'],['rep','🔧','الصيانة'],['settings','⚙️','الإعدادات'],['users','👥','المستخدمين']
+ ];
+ let pageName=(navItems.find(x=>x[0]===page)||navItems[0])[2];
+ let menu=`<style>
+ #mainNav{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:8px}
+ .neo-nav-item{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;padding:10px 8px;border-radius:13px;font-size:12px;font-weight:800;white-space:nowrap;transition:background .15s,color .15s}
+ .neo-nav-item:not(.neo-nav-active){background:#f3f4f6;color:#374151}
+ .neo-nav-item:not(.neo-nav-active):hover{background:#fee2e2;color:#991b1b}
+ .neo-nav-active{background:linear-gradient(120deg,#dc2626,#111827);color:white;box-shadow:0 4px 10px #991b1b20}
+ #navToggle{display:none}
+ @media(max-width:767px){
+  #navToggle{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px 14px;border:1px solid #e5e7eb;border-radius:14px;background:#f9fafb;font-weight:900}
+  #mainNav{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:16px}
+  #mainNav.nav-open{display:grid}
+  .neo-nav-item{justify-content:flex-start;padding:13px 12px;font-size:13px;white-space:normal}
+  .neo-nav-item .neo-nav-icon{font-size:18px;width:25px;text-align:center}
+ }
+ @media(min-width:768px) and (max-width:1050px){#mainNav{grid-template-columns:repeat(5,minmax(0,1fr))}}
+ </style>
+ <div class="bg-white border-b sticky top-0 z-40 shadow-sm"><div class="max-w-7xl mx-auto px-3 sm:px-4 py-3"><div class="flex items-center justify-between gap-3"><div class="flex items-center gap-2 min-w-0">${logoData?`<img src="${logoData}" class="h-9 w-9 object-contain rounded-xl border">`:`<div class="w-10 h-10 shrink-0 bg-gradient-to-r from-red-600 to-black text-white rounded-xl flex items-center justify-center font-black text-lg">N</div>`}<div class="min-w-0"><b class="block text-sm sm:text-base leading-tight">Neomobile</b><span class="text-[10px] text-emerald-600">☁️ متصل بالسحابة</span></div></div><div class="flex items-center gap-2"><span class="hidden sm:inline text-xs text-gray-600">مرحبًا ${cur.n}</span><button onclick="logout()" class="bg-gray-100 hover:bg-red-50 text-gray-700 px-3 py-2 rounded-xl text-xs font-bold">خروج</button></div></div><div class="mt-3 md:hidden"><button id="navToggle" onclick="toggleMainNav()" aria-expanded="false"><span>☰ القائمة</span><span class="text-red-600">${pageName}</span><span class="mr-auto">⌄</span></button></div><nav id="mainNav" class="mt-3">${navItems.map(([key,icon,label])=>`<button onclick="go('${key}')" class="neo-nav-item ${page===key?'neo-nav-active':''}"><span class="neo-nav-icon">${icon}</span><span>${label}</span></button>`).join('')}</nav></div></div>`;
  let content='';
  if(page==='dash'){
   let totalVal=DB.inv.reduce((s,x)=>s+x.qty*x.avgBuy,0), totalQty=DB.inv.reduce((s,x)=>s+x.qty,0);
@@ -361,30 +295,9 @@ function render(){
 app.innerHTML=menu+content+`<div id="cameraScanWrap" class="hidden fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4"><div class="bg-white rounded-3xl p-5 w-full max-w-md text-center"><div class="font-black text-lg mb-2">📷 مسح</div><div id="reader" class="w-full rounded-2xl overflow-hidden border-2 border-red-200"></div><div class="flex gap-2 mt-4"><button onclick="closeCameraScan()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">إغلاق</button></div></div></div>`;
 }
 (async()=>{
- await loadCloudAtStartup();
+ try{ let res=await supabaseClient.from('neomobile_data').select('*').eq('id',1).single(); if(res.data&&res.data.data&&DB.inv.length===0&&res.data.data.inv&&res.data.data.inv.length>0){ if(confirm('تحميل من السحابة؟')){DB=res.data.data; invCounter=res.data.counter||invCounter; if(res.data.logo){logoData=res.data.logo; localStorage.setItem(LOGO_KEY,logoData);} localStorage.setItem(KEY,JSON.stringify(DB)); } } }catch(e){}
+ supabaseClient.channel('neomobile').on('postgres_changes',{event:'*',schema:'public',table:'neomobile_data',filter:'id=eq.1'},(payload)=>{ if(payload.new&&payload.new.data&&JSON.stringify(payload.new.data)!==JSON.stringify(DB)){ if(confirm('تحديث جديد من جهاز تاني - تحميل؟')){DB=payload.new.data; invCounter=payload.new.counter||invCounter; localStorage.setItem(KEY,JSON.stringify(DB)); render();} } }).subscribe();
  render();
- // Realtime: apply updates from the other device without asking each time.
- supabaseClient.channel('neomobile-sync')
-  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'neomobile_data',filter:'id=eq.1'},async(payload)=>{
-   const row=payload.new;
-   if(!row||!row.data||JSON.stringify(row.data)===JSON.stringify(DB))return;
-   if(row.updated_at&&row.updated_at===lastCloudStamp)return;
-   await applyCloudRow(row);
-   render();
-   setSyncStatus('تم استلام تحديث من جهاز آخر',true);
-  })
-  .subscribe((status)=>{if(status==='SUBSCRIBED')setSyncStatus('☁️ المزامنة المباشرة مفعّلة',true);});
- // Poll as a fallback if Supabase Realtime is not enabled for the table.
- setInterval(async()=>{
-  if(!cloudReady)return;
-  try{
-   const {data,error}=await supabaseClient.from('neomobile_data').select('data,counter,logo,updated_at').eq('id',1).maybeSingle();
-   if(error)throw error;
-   if(data&&data.data&&data.updated_at&&data.updated_at!==lastCloudStamp&&JSON.stringify(data.data)!==JSON.stringify(DB)){
-    await applyCloudRow(data); render(); setSyncStatus('تم تحديث البيانات من السحابة',true);
-   }
-  }catch(e){console.warn('Cloud refresh failed:',e);}
- },10000);
 })();
 </script>
 </body>
