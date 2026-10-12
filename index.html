@@ -72,23 +72,33 @@ window.invSearchQ=''; window.invCatFilter='all'; window.jardSearchQ=''; window.s
 function calcSellFromMargin(){ let buy=parseFloat(document.getElementById('pbuy')?.value)||0; let margin=parseFloat(document.getElementById('pmargin')?.value)||0; if(buy>0){ let sell=margin>0?buy*(1+margin/100):buy*1.2; let el=document.getElementById('psell'); if(el) el.value=Math.round(sell);} }
 function addProduct(){
  let name=document.getElementById('pn').value.trim(); let cat=document.getElementById('pc').value; let sub=document.getElementById('psub').value.trim()||'عام'; let imei=document.getElementById('pimei').value.trim(); let qty=parseInt(document.getElementById('pq').value)||0; let unitCost=parseFloat(document.getElementById('pbuy').value)||0; let margin=parseFloat(document.getElementById('pmargin').value)||0; let defSell=parseFloat(document.getElementById('psell').value)||0; let supplier=document.getElementById('psup').value.trim(); let invNo=document.getElementById('pinv').value.trim();
- if(!name||!imei||qty<=0||unitCost<=0||!supplier){alert('اكمل البيانات: اسم، باركود، كمية، شراء، مورد');return}
+ if(!name||!imei||qty===0||unitCost<=0||!supplier){alert('اكمل البيانات: اسم، باركود، كمية غير صفرية، شراء، مورد');return}
  // الباركود لا يكفي وحده لتحديد أن الصنف هو نفس النوع؛ نتحقق من الاسم والقسم والنوع أيضًا.
  let existing=DB.inv.find(x=>String(x.imei||'').trim()===imei);
  if(existing){
   const norm=v=>String(v??'').trim().replace(/\s+/g,' ').toLocaleLowerCase();
   const sameProduct=norm(existing.name)===norm(name)&&norm(existing.sub||'عام')===norm(sub)&&String(existing.catId||'')===String(cat||'');
   if(!sameProduct){alert('⚠️ الباركود مستخدم بالفعل لصنف مختلف. لم يتم دمج الكمية أو حساب المتوسط. راجع اسم الصنف والنوع والقسم أو استخدم باركودًا صحيحًا.');return;}
-  let oldQty=Number(existing.qty)||0; let oldTotal=Math.max(0,oldQty)*(Number(existing.avgBuy)||0); let newTotal=qty*unitCost; let totalQty=oldQty+qty; let newAvg=totalQty>0?(oldQty>0?(oldTotal+newTotal)/totalQty:unitCost):(Number(existing.avgBuy)||unitCost);
-  existing.qty=totalQty; existing.avgBuy=newAvg; existing.totalCost=totalQty*newAvg; existing.lastSupplier=supplier;
-  if(defSell>0) existing.defaultSell=defSell; else if(margin>0) existing.defaultSell=Math.round(newAvg*(1+margin/100));
-  DB.purchases.push({id:uid(),productId:existing.id,name:existing.name,imei,qty,unitCost,totalCost:newTotal,avgAfter:newAvg,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
-  alert('✅ تم تحديث نفس الصنف والنوع\nالمتوسط الجديد: '+newAvg.toFixed(2)+' ج');
+  let oldQty=Number(existing.qty)||0;
+  if(qty<0){
+   // Negative quantity is a stock adjustment, not a purchase transaction.
+   existing.qty=oldQty+qty;
+   existing.totalCost=Math.max(0,existing.qty)*(Number(existing.avgBuy)||unitCost);
+   existing.lastSupplier=supplier;
+   alert('✅ تم تسجيل تسوية مخزون بالسالب: '+qty+' قطعة\nالرصيد الجديد: '+existing.qty+' قطعة');
+  }else{
+   let oldPositiveQty=Math.max(0,oldQty); let oldTotal=oldPositiveQty*(Number(existing.avgBuy)||0); let newTotal=qty*unitCost; let totalQty=oldQty+qty;
+   let newAvg=totalQty>0?(oldQty>0?(oldTotal+newTotal)/totalQty:unitCost):(Number(existing.avgBuy)||unitCost);
+   existing.qty=totalQty; existing.avgBuy=newAvg; existing.totalCost=Math.max(0,totalQty)*newAvg; existing.lastSupplier=supplier;
+   if(defSell>0) existing.defaultSell=defSell; else if(margin>0) existing.defaultSell=Math.round(newAvg*(1+margin/100));
+   DB.purchases.push({id:uid(),productId:existing.id,name:existing.name,imei,qty,unitCost,totalCost:newTotal,avgAfter:newAvg,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
+   alert('✅ تم تحديث نفس الصنف والنوع\nالمتوسط الجديد: '+newAvg.toFixed(2)+' ج');
+  }
  }else{
   let id=uid(); let sellPrice=defSell>0?defSell:(margin>0?Math.round(unitCost*(1+margin/100)):Math.round(unitCost*1.2));
-  DB.inv.push({id,name,catId:cat,sub,imei,qty,avgBuy:unitCost,totalCost:qty*unitCost,defaultSell:sellPrice,margin,img:'📱',lastSupplier:supplier});
-  DB.purchases.push({id:uid(),productId:id,name,imei,qty,unitCost,totalCost:qty*unitCost,avgAfter:unitCost,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});
-  alert('✅ تمت الإضافة - سعر البيع '+sellPrice+' ج');
+  DB.inv.push({id,name,catId:cat,sub,imei,qty,avgBuy:unitCost,totalCost:Math.max(0,qty)*unitCost,defaultSell:sellPrice,margin,img:'📱',lastSupplier:supplier});
+  if(qty>0){DB.purchases.push({id:uid(),productId:id,name,imei,qty,unitCost,totalCost:qty*unitCost,avgAfter:unitCost,supplier,invoiceNo:invNo,date:today(),time:new Date().toLocaleTimeString('ar-EG'),by:cur.n});alert('✅ تمت الإضافة - سعر البيع '+sellPrice+' ج');}
+  else {alert('✅ تمت إضافة الصنف برصيد سالب '+qty+' قطعة. لم يتم إنشاء فاتورة شراء لأن هذه تسوية مخزون وليست عملية شراء.');}
  }
  save(); render();
 }
