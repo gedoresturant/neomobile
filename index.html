@@ -73,10 +73,13 @@ function calcSellFromMargin(){ let buy=parseFloat(document.getElementById('pbuy'
 function addProduct(){
  let name=document.getElementById('pn').value.trim(); let cat=document.getElementById('pc').value; let sub=document.getElementById('psub').value.trim()||'عام'; let imei=document.getElementById('pimei').value.trim(); let qty=parseInt(document.getElementById('pq').value)||0; let unitCost=parseFloat(document.getElementById('pbuy').value)||0; let margin=parseFloat(document.getElementById('pmargin').value)||0; let defSell=parseFloat(document.getElementById('psell').value)||0; let supplier=document.getElementById('psup').value.trim(); let invNo=document.getElementById('pinv').value.trim();
  if(!name||!imei||qty===0||unitCost<=0||!supplier){alert('اكمل البيانات: اسم، باركود، كمية غير صفرية، شراء، مورد');return}
- // الباركود العام ممكن يتكرر لأصناف مختلفة؛ الدمج يحدث فقط لو الاسم والنوع والقسم متطابقين.
+ // لا يكفي أن يكون الباركود هو نفسه؛ الدمج يتم فقط إذا كان الاسم والنوع والقسم مطابقين.
  const norm=v=>String(v??'').trim().replace(/\s+/g,' ').toLocaleLowerCase();
- let existing=DB.inv.find(x=>String(x.imei||'').trim()===imei&&norm(x.name)===norm(name)&&norm(x.sub||'عام')===norm(sub)&&String(x.catId||'')===String(cat||''));
+ let existing=DB.inv.find(x=>String(x.imei||'').trim()===imei);
  if(existing){
+  const sameProduct=norm(existing.name)===norm(name)&&norm(existing.sub||'عام')===norm(sub)&&String(existing.catId||'')===String(cat||'');
+  if(!sameProduct){alert('⚠️ الباركود مستخدم بالفعل لصنف مختلف. لم يتم دمج الكمية أو حساب المتوسط. راجع اسم الصنف والنوع والقسم أو استخدم باركودًا صحيحًا.');return;}
+
   let oldQty=Number(existing.qty)||0;
   if(qty<0){
    // Negative quantity is a stock adjustment, not a purchase transaction.
